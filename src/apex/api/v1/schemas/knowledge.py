@@ -1,0 +1,1 @@
+"""Knowledge request/response schemas."""
