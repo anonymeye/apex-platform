@@ -63,7 +63,13 @@ alembic upgrade head
 
 ```bash
 # Start the API server
-poetry run uvicorn apex.api.main:app --reload
+cd apex
+poetry run uvicorn apex.api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Or from the project root:
+```bash
+poetry run uvicorn apex.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## Documentation
