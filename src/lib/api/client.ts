@@ -30,8 +30,13 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Handle unauthorized - clear token and redirect to login
-      localStorage.removeItem(process.env.NEXT_PUBLIC_JWT_STORAGE_KEY || "apex_token")
-      // window.location.href = "/login"
+      const tokenKey = process.env.NEXT_PUBLIC_JWT_STORAGE_KEY || "apex_token"
+      localStorage.removeItem(tokenKey)
+      
+      // Only redirect if we're in the browser and not already on login/register
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
+        window.location.href = "/login"
+      }
     }
     return Promise.reject(error)
   }
