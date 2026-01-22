@@ -22,7 +22,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
-      router.push("/dashboard")
+      router.push("/home")
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to login. Please check your credentials.")
     } finally {

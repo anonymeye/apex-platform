@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils/cn"
 
 const navigation = [
   {
-    name: "Dashboard",
-    href: "/dashboard",
+    name: "Home",
+    href: "/home",
     icon: LayoutDashboard,
   },
   {
@@ -59,7 +59,7 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col border-r bg-background">
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/home" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Bot className="h-5 w-5" />
           </div>

@@ -24,7 +24,7 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, name || undefined, organizationName || undefined)
-      router.push("/dashboard")
+      router.push("/home")
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to register. Please try again.")
     } finally {
