@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { Combobox } from "@/components/ui/combobox"
+import { OPEN_SOURCE_MODELS } from "@/lib/constants/models"
 
 const agentSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
@@ -21,6 +23,7 @@ const agentSchema = z.object({
   system_message: z.string().optional(),
   persona: z.string().optional(),
   tone: z.string().optional(),
+  model_id: z.string().min(1, "Please select a model"),
 })
 
 type AgentFormData = z.infer<typeof agentSchema>
@@ -33,6 +36,8 @@ export default function CreateAgentPage() {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AgentFormData>({
     resolver: zodResolver(agentSchema),
@@ -42,8 +47,17 @@ export default function CreateAgentPage() {
       system_message: "",
       persona: "",
       tone: "",
+      model_id: "",
     },
   })
+
+  const selectedModelId = watch("model_id")
+
+  const modelOptions = OPEN_SOURCE_MODELS.map((model) => ({
+    value: model.id,
+    label: model.name,
+    description: `${model.provider} • ${model.size || "N/A"} • ${model.description}`,
+  }))
 
   const createAgentMutation = useMutation({
     mutationFn: async (data: AgentFormData) => {
@@ -95,6 +109,27 @@ export default function CreateAgentPage() {
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-6">
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="model_id">
+                LLM Model <span className="text-destructive">*</span>
+              </Label>
+              <Combobox
+                options={modelOptions}
+                value={selectedModelId}
+                onValueChange={(value) => setValue("model_id", value, { shouldValidate: true })}
+                placeholder="Search and select a model..."
+                searchPlaceholder="Type to search models..."
+                emptyText="No models found. Try a different search."
+              />
+              {errors.model_id && (
+                <p className="text-sm text-destructive">{errors.model_id.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Choose the open source LLM model to power this agent
+              </p>
+            </div>
+
             {/* Name */}
             <div className="space-y-2">
               <Label htmlFor="name">

@@ -12,6 +12,25 @@ export function useAgent(agentId: string) {
 export function useAgents() {
   return useQuery({
     queryKey: ["agents"],
-    queryFn: () => agentsApi.list().then((res) => res.data),
+    queryFn: async () => {
+      try {
+        const response = await agentsApi.list()
+        return response.data
+      } catch (error: any) {
+        // Handle 404 as empty array (no agents yet)
+        if (error?.response?.status === 404) {
+          return []
+        }
+        throw error
+      }
+    },
+    retry: (failureCount, error: any) => {
+      // Don't retry on 404 (no agents is a valid state)
+      if (error?.response?.status === 404) {
+        return false
+      }
+      return failureCount < 3
+    },
+    staleTime: 30 * 1000, // 30 seconds
   })
 }

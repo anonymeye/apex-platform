@@ -25,9 +25,25 @@ export function AgentSelector() {
   const { data: agents, isLoading } = useQuery({
     queryKey: ["agents"],
     queryFn: async () => {
-      const response = await agentsApi.list()
-      return response.data as Agent[]
+      try {
+        const response = await agentsApi.list()
+        return response.data as Agent[]
+      } catch (error: any) {
+        // Handle 404 as empty array (no agents yet)
+        if (error?.response?.status === 404) {
+          return [] as Agent[]
+        }
+        throw error
+      }
     },
+    retry: (failureCount, error: any) => {
+      // Don't retry on 404 (no agents is a valid state)
+      if (error?.response?.status === 404) {
+        return false
+      }
+      return failureCount < 3
+    },
+    staleTime: 30 * 1000, // 30 seconds
   })
 
   const handleSelectAgent = (agent: Agent) => {

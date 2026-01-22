@@ -11,6 +11,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 60 * 1000, // 1 minute
             refetchOnWindowFocus: false,
+            refetchOnMount: true,
+            refetchOnReconnect: true,
+            // Dedupe queries that happen within 1 second
+            structuralSharing: true,
           },
         },
       })

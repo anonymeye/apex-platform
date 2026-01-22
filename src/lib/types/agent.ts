@@ -7,6 +7,7 @@ export interface Agent {
   system_message?: string
   persona?: string
   tone?: string
+  model_id?: string
   status: "active" | "inactive" | "training"
   created_at: string
   updated_at: string
