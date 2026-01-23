@@ -8,7 +8,11 @@ from alembic import context
 
 # Import your models' Base and all models so Alembic can detect them
 from apex.models.base import Base
+# Import all models so Alembic can detect them for autogenerate
 from apex.models.user import Organization, OrganizationMember, User  # noqa: F401
+from apex.models.knowledge import Document, KnowledgeBase  # noqa: F401
+from apex.models.tool import AgentTool, Tool  # noqa: F401
+from apex.models.agent import Agent  # noqa: F401
 from apex.core.config import settings
 
 # this is the Alembic Config object, which provides

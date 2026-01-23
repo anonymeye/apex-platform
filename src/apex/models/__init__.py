@@ -1,6 +1,9 @@
 """Database models (SQLAlchemy)."""
 
+from apex.models.agent import Agent
 from apex.models.base import Base, BaseModel
+from apex.models.knowledge import Document, KnowledgeBase
+from apex.models.tool import AgentTool, Tool
 from apex.models.user import Organization, OrganizationMember, User
 
 __all__ = [
@@ -9,4 +12,9 @@ __all__ = [
     "User",
     "Organization",
     "OrganizationMember",
+    "KnowledgeBase",
+    "Document",
+    "Tool",
+    "Agent",
+    "AgentTool",
 ]

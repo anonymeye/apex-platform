@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apex.api.v1.routes import auth
+from apex.api.v1.routes import knowledge
 from apex.core.config import settings
 from apex.core.database import close_db, init_db
 
@@ -38,6 +39,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 
 
 @app.get("/")
