@@ -15,18 +15,58 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { Combobox } from "@/components/ui/combobox"
-import { OPEN_SOURCE_MODELS } from "@/lib/constants/models"
+import { OPEN_SOURCE_MODELS, getModelById } from "@/lib/constants/models"
+import type { AgentCreate } from "@/lib/types/agent"
 
 const agentSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters"),
+  name: z.string().min(1, "Name is required").max(255, "Name must be less than 255 characters"),
   description: z.string().optional(),
   system_message: z.string().optional(),
-  persona: z.string().optional(),
-  tone: z.string().optional(),
+  max_iterations: z.number().min(1).max(50).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().min(1).optional(),
   model_id: z.string().min(1, "Please select a model"),
 })
 
 type AgentFormData = z.infer<typeof agentSchema>
+
+// Helper to convert model_id to backend format
+function transformFormDataToApi(data: AgentFormData): AgentCreate {
+  if (!data.model_id) {
+    throw new Error("Model ID is required")
+  }
+  
+  const model = getModelById(data.model_id)
+  if (!model) {
+    throw new Error(`Invalid model selected: ${data.model_id}`)
+  }
+
+  // Normalize provider name to lowercase (backend expects lowercase provider names)
+  const model_provider = model.provider.toLowerCase().replace(/\s+/g, "-")
+  
+  // Build result object with ONLY the fields the backend expects
+  // Explicitly exclude model_id, persona, tone, and any other form-only fields
+  const result: AgentCreate = {
+    name: String(data.name).trim(),
+    model_provider: model_provider,
+    model_name: model.name,
+    max_iterations: data.max_iterations || 10,
+    config: {},
+  }
+  
+  // Add optional fields only if they have values
+  if (data.description?.trim()) result.description = data.description.trim()
+  if (data.system_message?.trim()) result.system_message = data.system_message.trim()
+  if (data.temperature !== undefined && data.temperature !== null) result.temperature = data.temperature
+  if (data.max_tokens !== undefined && data.max_tokens !== null) result.max_tokens = data.max_tokens
+  
+  // Validate required fields
+  if (!result.model_provider || !result.model_name) {
+    throw new Error("Failed to extract model_provider and model_name from model_id")
+  }
+  
+  return result
+}
 
 export default function CreateAgentPage() {
   const router = useRouter()
@@ -45,8 +85,7 @@ export default function CreateAgentPage() {
       name: "",
       description: "",
       system_message: "",
-      persona: "",
-      tone: "",
+      max_iterations: 10,
       model_id: "",
     },
   })
@@ -60,8 +99,9 @@ export default function CreateAgentPage() {
   }))
 
   const createAgentMutation = useMutation({
-    mutationFn: async (data: AgentFormData) => {
-      const response = await agentsApi.create(data)
+    mutationFn: async (apiData: AgentCreate) => {
+      // Data is already transformed in onSubmit
+      const response = await agentsApi.create(apiData)
       return response.data
     },
     onSuccess: (agent) => {
@@ -81,7 +121,9 @@ export default function CreateAgentPage() {
   })
 
   const onSubmit = async (data: AgentFormData) => {
-    await createAgentMutation.mutateAsync(data)
+    // Ensure transformation happens before sending
+    const transformedData = transformFormDataToApi(data)
+    await createAgentMutation.mutateAsync(transformedData as any)
   }
 
   return (
@@ -177,35 +219,60 @@ export default function CreateAgentPage() {
               )}
             </div>
 
-            {/* Persona */}
+            {/* Max Iterations */}
             <div className="space-y-2">
-              <Label htmlFor="persona">Persona</Label>
+              <Label htmlFor="max_iterations">Max Iterations</Label>
               <Input
-                id="persona"
-                placeholder="e.g., Friendly assistant, Professional consultant"
-                {...register("persona")}
+                id="max_iterations"
+                type="number"
+                min={1}
+                max={50}
+                placeholder="10"
+                {...register("max_iterations", { valueAsNumber: true })}
               />
               <p className="text-xs text-muted-foreground">
-                Define the agent&apos;s personality or character
+                Maximum number of tool-calling iterations (1-50)
               </p>
-              {errors.persona && (
-                <p className="text-sm text-destructive">{errors.persona.message}</p>
+              {errors.max_iterations && (
+                <p className="text-sm text-destructive">{errors.max_iterations.message}</p>
               )}
             </div>
 
-            {/* Tone */}
+            {/* Temperature */}
             <div className="space-y-2">
-              <Label htmlFor="tone">Tone</Label>
+              <Label htmlFor="temperature">Temperature</Label>
               <Input
-                id="tone"
-                placeholder="e.g., Casual, Formal, Friendly"
-                {...register("tone")}
+                id="temperature"
+                type="number"
+                step="0.1"
+                min={0}
+                max={2}
+                placeholder="0.7"
+                {...register("temperature", { valueAsNumber: true })}
               />
               <p className="text-xs text-muted-foreground">
-                Define the communication style
+                Model temperature (0.0-2.0). Higher values make output more random.
               </p>
-              {errors.tone && (
-                <p className="text-sm text-destructive">{errors.tone.message}</p>
+              {errors.temperature && (
+                <p className="text-sm text-destructive">{errors.temperature.message}</p>
+              )}
+            </div>
+
+            {/* Max Tokens */}
+            <div className="space-y-2">
+              <Label htmlFor="max_tokens">Max Tokens</Label>
+              <Input
+                id="max_tokens"
+                type="number"
+                min={1}
+                placeholder="2048"
+                {...register("max_tokens", { valueAsNumber: true })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Maximum tokens in the response (optional)
+              </p>
+              {errors.max_tokens && (
+                <p className="text-sm text-destructive">{errors.max_tokens.message}</p>
               )}
             </div>
           </CardContent>

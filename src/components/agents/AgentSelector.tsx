@@ -104,17 +104,13 @@ export function AgentSelector() {
             className="flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  agent.status === "active"
-                    ? "bg-green-500"
-                    : agent.status === "training"
-                    ? "bg-yellow-500"
-                    : "bg-gray-400"
-                )}
-              />
+              <Bot className="h-4 w-4 opacity-50" />
               <span>{agent.name}</span>
+              {agent.model_name && (
+                <span className="text-xs text-muted-foreground">
+                  ({agent.model_provider}/{agent.model_name})
+                </span>
+              )}
             </div>
             {selectedAgentId === agent.id && (
               <Check className="h-4 w-4" />
