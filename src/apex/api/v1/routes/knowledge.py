@@ -78,7 +78,7 @@ async def create_knowledge_base(
         Created knowledge base
     """
     # Get organization ID from user (simplified - in production, get from user_data)
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     kb_repo = KnowledgeBaseRepository(db)
     knowledge_service = KnowledgeService(
@@ -122,7 +122,7 @@ async def list_knowledge_bases(
     Returns:
         List of knowledge bases
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     kb_repo = KnowledgeBaseRepository(db)
     kbs = await kb_repo.get_by_organization(organization_id)
@@ -158,7 +158,7 @@ async def get_knowledge_base(
     Returns:
         Knowledge base
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     kb_repo = KnowledgeBaseRepository(db)
     kb = await kb_repo.get(kb_id)
@@ -202,7 +202,7 @@ async def upload_documents(
     Returns:
         Upload response with created documents and tool info
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     kb_repo = KnowledgeBaseRepository(db)
     kb = await kb_repo.get(kb_id)

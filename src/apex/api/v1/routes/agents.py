@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
+# Debug: Log router creation
+logger.info("Agent router initialized")
+
 
 def get_agent_service(db: AsyncSession = Depends(get_db)) -> AgentService:
     """Get agent service instance."""
@@ -76,7 +79,8 @@ async def create_agent(
     Raises:
         HTTPException: If validation fails or tool IDs are invalid
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    logger.info(f"Creating agent with data: name={agent_data.name}, model_provider={agent_data.model_provider}, model_name={agent_data.model_name}")
+    organization_id = UUID(user_data.get("org_id"))
 
     try:
         agent = await agent_service.create_agent(
@@ -123,7 +127,7 @@ async def list_agents(
     Returns:
         List of agents
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     agents = await agent_service.list_agents(organization_id, skip=skip, limit=limit)
 
@@ -158,7 +162,7 @@ async def get_agent(
     Raises:
         HTTPException: If agent not found or unauthorized
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     agent = await agent_service.get_agent(agent_id, organization_id)
     if not agent:
@@ -193,7 +197,7 @@ async def update_agent(
     Raises:
         HTTPException: If agent not found, unauthorized, or validation fails
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     try:
         agent = await agent_service.update_agent(
@@ -243,7 +247,7 @@ async def delete_agent(
     Raises:
         HTTPException: If agent not found or unauthorized
     """
-    organization_id = UUID(user_data.get("organization_id", user_data.get("sub")))
+    organization_id = UUID(user_data.get("org_id"))
 
     deleted = await agent_service.delete_agent(agent_id, organization_id)
     if not deleted:
