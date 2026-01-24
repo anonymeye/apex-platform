@@ -168,3 +168,21 @@ export function searchModels(query: string): LLMModel[] {
       model.id.toLowerCase().includes(queryLower)
   )
 }
+
+// Helper to find model_id from backend model_provider and model_name
+// Backend stores provider as lowercase with dashes (e.g., "meta", "mistral-ai")
+export function getModelIdFromBackendData(
+  model_provider: string,
+  model_name: string
+): string | undefined {
+  // Normalize provider: convert to lowercase and replace spaces with dashes
+  const normalizedProvider = model_provider.toLowerCase().replace(/\s+/g, "-")
+  
+  // Find matching model by comparing normalized provider and exact model name
+  const model = OPEN_SOURCE_MODELS.find((m) => {
+    const modelProviderNormalized = m.provider.toLowerCase().replace(/\s+/g, "-")
+    return modelProviderNormalized === normalizedProvider && m.name === model_name
+  })
+  
+  return model?.id
+}

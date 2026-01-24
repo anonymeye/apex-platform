@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Bot, Loader2 } from "lucide-react"
+import { Plus, Bot, Loader2, Pencil } from "lucide-react"
 import { agentsApi } from "@/lib/api/agents"
 import type { Agent } from "@/lib/types/agent"
 import { useAgentStore } from "@/lib/store/agentStore"
@@ -98,6 +98,19 @@ export default function AgentsPage() {
                     <Bot className="h-5 w-5 text-primary" />
                     <CardTitle className="text-lg">{agent.name}</CardTitle>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                    }}
+                    asChild
+                  >
+                    <Link href={`/agents/${agent.id}/edit`}>
+                      <Pencil className="h-4 w-4" />
+                    </Link>
+                  </Button>
                 </div>
                 {agent.description && (
                   <CardDescription className="mt-2">
