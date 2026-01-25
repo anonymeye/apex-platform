@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { agentsApi } from "@/lib/api/agents"
+import { connectionsApi } from "@/lib/api/connections"
+import { modelRefsApi } from "@/lib/api/model-refs"
 import { useAgentStore } from "@/lib/store/agentStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,9 +17,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { Combobox } from "@/components/ui/combobox"
-import { OPEN_SOURCE_MODELS, getModelById, getModelIdFromBackendData } from "@/lib/constants/models"
 import type { AgentUpdate } from "@/lib/types/agent"
 import { useEffect } from "react"
+import type { Connection, ModelRef } from "@/lib/types/model"
 
 const agentSchema = z.object({
   name: z.string().min(1, "Name is required").max(255, "Name must be less than 255 characters"),
@@ -26,30 +28,17 @@ const agentSchema = z.object({
   max_iterations: z.number().min(1).max(50).optional(),
   temperature: z.number().min(0).max(2).optional(),
   max_tokens: z.number().min(1).optional(),
-  model_id: z.string().min(1, "Please select a model"),
+  connection_id: z.string().min(1, "Please select a connection"),
+  model_ref_id: z.string().min(1, "Please select a model"),
 })
 
 type AgentFormData = z.infer<typeof agentSchema>
 
-// Helper to convert model_id to backend format
 function transformFormDataToApi(data: AgentFormData): AgentUpdate {
-  if (!data.model_id) {
-    throw new Error("Model ID is required")
-  }
-  
-  const model = getModelById(data.model_id)
-  if (!model) {
-    throw new Error(`Invalid model selected: ${data.model_id}`)
-  }
-
-  // Normalize provider name to lowercase (backend expects lowercase provider names)
-  const model_provider = model.provider.toLowerCase().replace(/\s+/g, "-")
-  
   // Build result object with ONLY the fields the backend expects
   const result: AgentUpdate = {
     name: String(data.name).trim(),
-    model_provider: model_provider,
-    model_name: model.name,
+    model_ref_id: data.model_ref_id,
     max_iterations: data.max_iterations || 10,
   }
   
@@ -58,11 +47,6 @@ function transformFormDataToApi(data: AgentFormData): AgentUpdate {
   if (data.system_message?.trim()) result.system_message = data.system_message.trim()
   if (data.temperature !== undefined && data.temperature !== null) result.temperature = data.temperature
   if (data.max_tokens !== undefined && data.max_tokens !== null) result.max_tokens = data.max_tokens
-  
-  // Validate required fields
-  if (!result.model_provider || !result.model_name) {
-    throw new Error("Failed to extract model_provider and model_name from model_id")
-  }
   
   return result
 }
@@ -84,6 +68,22 @@ export default function EditAgentPage() {
     enabled: !!agentId,
   })
 
+  const { data: connections, isLoading: isLoadingConnections } = useQuery({
+    queryKey: ["connections"],
+    queryFn: async () => {
+      const res = await connectionsApi.list()
+      return res.data as Connection[]
+    },
+  })
+
+  const { data: modelRefs, isLoading: isLoadingModelRefs } = useQuery({
+    queryKey: ["model-refs"],
+    queryFn: async () => {
+      const res = await modelRefsApi.list()
+      return res.data as ModelRef[]
+    },
+  })
+
   const {
     register,
     handleSubmit,
@@ -98,15 +98,15 @@ export default function EditAgentPage() {
       description: "",
       system_message: "",
       max_iterations: 10,
-      model_id: "",
+      connection_id: "",
+      model_ref_id: "",
     },
   })
 
   // Pre-populate form when agent data loads
   useEffect(() => {
     if (agent) {
-      const modelId = getModelIdFromBackendData(agent.model_provider, agent.model_name)
-      
+      const connectionId = agent.model_ref?.connection?.id || ""
       reset({
         name: agent.name || "",
         description: agent.description || "",
@@ -114,17 +114,29 @@ export default function EditAgentPage() {
         max_iterations: agent.max_iterations || 10,
         temperature: agent.temperature,
         max_tokens: agent.max_tokens,
-        model_id: modelId || "",
+        connection_id: connectionId,
+        model_ref_id: agent.model_ref_id || "",
       })
     }
   }, [agent, reset])
 
-  const selectedModelId = watch("model_id")
+  const selectedConnectionId = watch("connection_id")
+  const selectedModelRefId = watch("model_ref_id")
 
-  const modelOptions = OPEN_SOURCE_MODELS.map((model) => ({
-    value: model.id,
-    label: model.name,
-    description: `${model.provider} • ${model.size || "N/A"} • ${model.description}`,
+  const connectionOptions = (connections || []).map((c) => ({
+    value: c.id,
+    label: c.name,
+    description: `${c.connection_type} • ${c.provider}${c.base_url ? ` • ${c.base_url}` : ""}`,
+  }))
+
+  const filteredModelRefs = (modelRefs || []).filter((mr) =>
+    selectedConnectionId ? mr.connection_id === selectedConnectionId : false
+  )
+
+  const modelRefOptions = filteredModelRefs.map((mr) => ({
+    value: mr.id,
+    label: mr.name,
+    description: `runtime_id: ${mr.runtime_id}`,
   }))
 
   const updateAgentMutation = useMutation({
@@ -214,22 +226,52 @@ export default function EditAgentPage() {
           <CardContent className="space-y-6">
             {/* Model Selection */}
             <div className="space-y-2">
-              <Label htmlFor="model_id">
-                LLM Model <span className="text-destructive">*</span>
+              <Label htmlFor="connection_id">
+                Connection <span className="text-destructive">*</span>
               </Label>
               <Combobox
-                options={modelOptions}
-                value={selectedModelId}
-                onValueChange={(value) => setValue("model_id", value, { shouldValidate: true })}
-                placeholder="Search and select a model..."
-                searchPlaceholder="Type to search models..."
-                emptyText="No models found. Try a different search."
+                options={connectionOptions}
+                value={selectedConnectionId}
+                onValueChange={(value) => {
+                  setValue("connection_id", value, { shouldValidate: true })
+                  setValue("model_ref_id", "", { shouldValidate: true })
+                }}
+                placeholder={isLoadingConnections ? "Loading connections..." : "Select a connection..."}
+                searchPlaceholder="Type to search connections..."
+                emptyText="No connections found."
               />
-              {errors.model_id && (
-                <p className="text-sm text-destructive">{errors.model_id.message}</p>
+              {errors.connection_id && (
+                <p className="text-sm text-destructive">{errors.connection_id.message}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Choose the open source LLM model to power this agent
+                Pick where your model is hosted (vendor API or self-hosted endpoint)
+              </p>
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="model_ref_id">
+                Model <span className="text-destructive">*</span>
+              </Label>
+              <Combobox
+                options={modelRefOptions}
+                value={selectedModelRefId}
+                onValueChange={(value) => setValue("model_ref_id", value, { shouldValidate: true })}
+                placeholder={
+                  !selectedConnectionId
+                    ? "Select a connection first..."
+                    : isLoadingModelRefs
+                      ? "Loading models..."
+                      : "Select a model..."
+                }
+                searchPlaceholder="Type to search models..."
+                emptyText={selectedConnectionId ? "No models for this connection." : "Select a connection first."}
+              />
+              {errors.model_ref_id && (
+                <p className="text-sm text-destructive">{errors.model_ref_id.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Choose the model reference to power this agent
               </p>
             </div>
 

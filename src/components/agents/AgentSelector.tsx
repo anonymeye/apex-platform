@@ -106,9 +106,9 @@ export function AgentSelector() {
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 opacity-50" />
               <span>{agent.name}</span>
-              {agent.model_name && (
+              {agent.model_ref?.name && agent.model_ref?.connection?.name && (
                 <span className="text-xs text-muted-foreground">
-                  ({agent.model_provider}/{agent.model_name})
+                  ({agent.model_ref.connection.name}/{agent.model_ref.name})
                 </span>
               )}
             </div>

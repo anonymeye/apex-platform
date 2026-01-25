@@ -123,7 +123,9 @@ export default function AgentsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Model:</span>
                     <span className="font-medium">
-                      {agent.model_provider}/{agent.model_name}
+                      {agent.model_ref?.connection?.name
+                        ? `${agent.model_ref.connection.name} / ${agent.model_ref.name}`
+                        : agent.model_ref_id}
                     </span>
                   </div>
                   {agent.tools && agent.tools.length > 0 && (

@@ -7,6 +7,8 @@ import {
   Bot,
   MessageCircle,
   Book,
+  Plug,
+  Database,
   GraduationCap,
   FlaskConical,
   BarChart3,
@@ -24,6 +26,16 @@ const navigation = [
     name: "Agents",
     href: "/agents",
     icon: Bot,
+  },
+  {
+    name: "Connections",
+    href: "/connections",
+    icon: Plug,
+  },
+  {
+    name: "Models",
+    href: "/models",
+    icon: Database,
   },
   {
     name: "Test Agent",
