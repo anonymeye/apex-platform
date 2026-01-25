@@ -9,6 +9,9 @@ from conduit.rag import RAGChain, VectorRetriever
 from conduit.tools import Tool
 from pydantic import BaseModel, Field
 
+from apex.ml.rag.retriever import KnowledgeBaseRetriever
+from apex.ml.rag.embeddings import EmbeddingService
+from apex.storage.vector_store import ApexVectorStore
 from apex.models.tool import Tool as ToolModel
 from apex.repositories.tool_repository import ToolRepository
 
@@ -27,19 +30,40 @@ class RAGToolService:
     def __init__(
         self,
         tool_repository: ToolRepository,
-        vector_retriever: VectorRetriever,
-        chat_model,
+        vector_retriever: VectorRetriever | ApexVectorStore,
+        chat_model=None,
+        embedding_service: EmbeddingService | None = None,
     ):
         """Initialize RAG tool service.
 
         Args:
             tool_repository: Tool repository instance
-            vector_retriever: VectorRetriever for the knowledge base
-            chat_model: ChatModel instance for RAG chain
+            vector_retriever: Retriever (or vector store wrapper) for RAG
+            chat_model: Optional ChatModel instance for RAG chain (can be provided at call time)
+            embedding_service: Optional embedding service (used to build KB-scoped retrievers at runtime)
         """
         self.tool_repository = tool_repository
         self.vector_retriever = vector_retriever
         self.chat_model = chat_model
+        self.embedding_service = embedding_service
+
+    def _get_retriever_for_tool(self, tool_model: ToolModel) -> VectorRetriever:
+        """Resolve the correct retriever for a specific tool."""
+        # If we were constructed with a KnowledgeBaseRetriever (or any VectorRetriever),
+        # just use it as-is.
+        if isinstance(self.vector_retriever, VectorRetriever):
+            return self.vector_retriever
+
+        # Otherwise we expect an ApexVectorStore and (optionally) an EmbeddingService
+        # so we can build a KB-scoped retriever at runtime.
+        if isinstance(self.vector_retriever, ApexVectorStore) and self.embedding_service:
+            return KnowledgeBaseRetriever(
+                vector_store=self.vector_retriever,
+                embedding_model=self.embedding_service.embedding_model,
+                knowledge_base_id=tool_model.knowledge_base_id,
+            )
+
+        raise ValueError("RAGToolService is missing a usable retriever configuration")
 
     def _generate_tool_name(self, kb_name: str, organization_id: UUID) -> str:
         """Generate unique tool name from knowledge base name.
@@ -156,31 +180,10 @@ class RAGToolService:
         # Use default template if not provided
         template = rag_template or self._get_default_rag_template()
 
-        # Create RAG chain
-        rag_chain = RAGChain(
-            model=self.chat_model,
-            retriever=self.vector_retriever,
-            template=template,
-            k=rag_k,
-        )
-
-        # Create tool function
-        tool_function = await self.create_rag_tool_function(
-            rag_chain, knowledge_base_name
-        )
-
         # Create tool description
         tool_description = (
             f"Search the {knowledge_base_name} knowledge base for information. "
             f"Use this tool when you need to find information from the uploaded documents."
-        )
-
-        # Create Conduit Tool (for runtime use)
-        conduit_tool = Tool(
-            name=tool_name,
-            description=tool_description,
-            parameters=KnowledgeBaseSearchParams,
-            fn=tool_function,
         )
 
         # Save tool to database
@@ -216,13 +219,14 @@ class RAGToolService:
 
         return tool_model
 
-    async def create_conduit_tool_from_db(self, tool_model: ToolModel) -> Tool:
+    async def create_conduit_tool_from_db(self, tool_model: ToolModel, chat_model=None) -> Tool:
         """Create a Conduit Tool instance from database model.
 
         This is used at runtime to convert stored tool config into executable tool.
 
         Args:
             tool_model: Tool database model
+            chat_model: Optional ChatModel override for generation (defaults to self.chat_model)
 
         Returns:
             Conduit Tool instance
@@ -230,13 +234,18 @@ class RAGToolService:
         if tool_model.tool_type != "rag":
             raise ValueError(f"Tool type '{tool_model.tool_type}' not supported yet")
 
+        model = chat_model or self.chat_model
+        if model is None:
+            raise ValueError("No chat model provided for RAG tool execution")
+
         # Recreate RAG chain from stored config
         template = tool_model.rag_template or self._get_default_rag_template()
         k = tool_model.rag_k or 5
+        retriever = self._get_retriever_for_tool(tool_model)
 
         rag_chain = RAGChain(
-            model=self.chat_model,
-            retriever=self.vector_retriever,
+            model=model,
+            retriever=retriever,
             template=template,
             k=k,
         )

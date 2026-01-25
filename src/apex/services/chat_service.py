@@ -159,7 +159,9 @@ class ChatService:
                 tool_model = agent_tool.tool
                 if tool_model.tool_type == "rag":
                     try:
-                        conduit_tool = await self.rag_tool_service.create_conduit_tool_from_db(tool_model)
+                        conduit_tool = await self.rag_tool_service.create_conduit_tool_from_db(
+                            tool_model, chat_model=model
+                        )
                         conduit_tools.append(conduit_tool)
                         logger.info(f"Loaded RAG tool: {tool_model.name}")
                     except Exception as e:
