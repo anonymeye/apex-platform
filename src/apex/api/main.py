@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from apex.api.v1.routes import agents, auth, knowledge
+from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model_refs
 from apex.core.config import settings
 from apex.core.database import close_db
 
@@ -101,6 +101,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")  # Router already has /agents prefix
+app.include_router(connections.router, prefix="/api/v1")
+app.include_router(model_refs.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1/agents")  # Chat routes are under /agents
 
 
 @app.get("/")

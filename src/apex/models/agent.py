@@ -18,9 +18,13 @@ class Agent(BaseModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Model configuration
-    model_provider: Mapped[str] = mapped_column(String(50), nullable=False)  # "openai", "anthropic", "groq", etc.
-    model_name: Mapped[str] = mapped_column(String(100), nullable=False)  # "gpt-4", "claude-3-opus", etc.
+    # Model selection
+    model_ref_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("model_refs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     
     # Agent configuration
     system_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -42,6 +46,7 @@ class Agent(BaseModel):
     )
     
     # Relationships
+    model_ref: Mapped["ModelRef"] = relationship("ModelRef", back_populates="agents")
     agent_tools: Mapped[list["AgentTool"]] = relationship(
         "AgentTool",
         back_populates="agent",
@@ -49,4 +54,4 @@ class Agent(BaseModel):
     )
 
     def __repr__(self) -> str:
-        return f"<Agent(id={self.id}, name={self.name}, model={self.model_provider}/{self.model_name})>"
+        return f"<Agent(id={self.id}, name={self.name}, model_ref_id={self.model_ref_id})>"

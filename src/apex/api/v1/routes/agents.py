@@ -10,6 +10,7 @@ from apex.api.dependencies import get_current_user_from_token
 from apex.api.v1.schemas.agents import AgentCreate, AgentResponse, AgentUpdate, ToolInfo
 from apex.core.database import get_db
 from apex.repositories.agent_repository import AgentRepository
+from apex.repositories.model_ref_repository import ModelRefRepository
 from apex.repositories.tool_repository import AgentToolRepository, ToolRepository
 from apex.services.agent_service import AgentService
 
@@ -27,6 +28,7 @@ def get_agent_service(db: AsyncSession = Depends(get_db)) -> AgentService:
         agent_repo=AgentRepository(db),
         tool_repo=ToolRepository(db),
         agent_tool_repo=AgentToolRepository(db),
+        model_ref_repo=ModelRefRepository(db),
     )
 
 
@@ -36,8 +38,22 @@ def _agent_to_response(agent) -> AgentResponse:
         id=agent.id,
         name=agent.name,
         description=agent.description,
-        model_provider=agent.model_provider,
-        model_name=agent.model_name,
+        model_ref_id=agent.model_ref_id,
+        model_ref=(
+            {
+                "id": agent.model_ref.id,
+                "name": agent.model_ref.name,
+                "runtime_id": agent.model_ref.runtime_id,
+                "connection": {
+                    "id": agent.model_ref.connection.id,
+                    "name": agent.model_ref.connection.name,
+                    "provider": agent.model_ref.connection.provider,
+                    "connection_type": agent.model_ref.connection.connection_type,
+                },
+            }
+            if getattr(agent, "model_ref", None) and getattr(agent.model_ref, "connection", None)
+            else None
+        ),
         system_message=agent.system_message,
         max_iterations=agent.max_iterations,
         temperature=agent.temperature,
@@ -79,15 +95,16 @@ async def create_agent(
     Raises:
         HTTPException: If validation fails or tool IDs are invalid
     """
-    logger.info(f"Creating agent with data: name={agent_data.name}, model_provider={agent_data.model_provider}, model_name={agent_data.model_name}")
+    logger.info(
+        f"Creating agent with data: name={agent_data.name}, model_ref_id={agent_data.model_ref_id}"
+    )
     organization_id = UUID(user_data.get("org_id"))
 
     try:
         agent = await agent_service.create_agent(
             name=agent_data.name,
             organization_id=organization_id,
-            model_provider=agent_data.model_provider,
-            model_name=agent_data.model_name,
+            model_ref_id=agent_data.model_ref_id,
             description=agent_data.description,
             system_message=agent_data.system_message,
             max_iterations=agent_data.max_iterations,
@@ -205,8 +222,7 @@ async def update_agent(
             organization_id=organization_id,
             name=agent_data.name,
             description=agent_data.description,
-            model_provider=agent_data.model_provider,
-            model_name=agent_data.model_name,
+            model_ref_id=agent_data.model_ref_id,
             system_message=agent_data.system_message,
             max_iterations=agent_data.max_iterations,
             temperature=agent_data.temperature,

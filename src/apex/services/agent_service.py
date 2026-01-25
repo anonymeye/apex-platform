@@ -6,6 +6,7 @@ from uuid import UUID
 
 from apex.models.agent import Agent
 from apex.repositories.agent_repository import AgentRepository
+from apex.repositories.model_ref_repository import ModelRefRepository
 from apex.repositories.tool_repository import AgentToolRepository, ToolRepository
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class AgentService:
         agent_repo: AgentRepository,
         tool_repo: ToolRepository,
         agent_tool_repo: AgentToolRepository,
+        model_ref_repo: ModelRefRepository,
     ):
         """Initialize agent service.
 
@@ -30,13 +32,13 @@ class AgentService:
         self.agent_repo = agent_repo
         self.tool_repo = tool_repo
         self.agent_tool_repo = agent_tool_repo
+        self.model_ref_repo = model_ref_repo
 
     async def create_agent(
         self,
         name: str,
         organization_id: UUID,
-        model_provider: str,
-        model_name: str,
+        model_ref_id: UUID,
         description: Optional[str] = None,
         system_message: Optional[str] = None,
         max_iterations: int = 10,
@@ -50,8 +52,7 @@ class AgentService:
         Args:
             name: Agent name
             organization_id: Organization ID
-            model_provider: Model provider (e.g., 'openai', 'anthropic')
-            model_name: Model name (e.g., 'gpt-4', 'claude-3-opus')
+            model_ref_id: Model reference ID (pins agent to a deployable model)
             description: Optional description
             system_message: Optional system message
             max_iterations: Maximum tool-calling iterations
@@ -66,6 +67,11 @@ class AgentService:
         Raises:
             ValueError: If tool IDs are invalid or don't belong to organization
         """
+        # Validate model ref belongs to organization
+        model_ref = await self.model_ref_repo.get_for_org(model_ref_id, organization_id)
+        if not model_ref:
+            raise ValueError(f"ModelRef {model_ref_id} not found")
+
         # Validate tool IDs if provided
         if tool_ids:
             for tool_id in tool_ids:
@@ -81,8 +87,7 @@ class AgentService:
         agent = await self.agent_repo.create(
             name=name,
             description=description,
-            model_provider=model_provider,
-            model_name=model_name,
+            model_ref_id=model_ref_id,
             system_message=system_message,
             max_iterations=max_iterations,
             temperature=temperature,
@@ -137,8 +142,7 @@ class AgentService:
         organization_id: UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        model_provider: Optional[str] = None,
-        model_name: Optional[str] = None,
+        model_ref_id: Optional[UUID] = None,
         system_message: Optional[str] = None,
         max_iterations: Optional[int] = None,
         temperature: Optional[float] = None,
@@ -153,8 +157,7 @@ class AgentService:
             organization_id: Organization ID (for authorization)
             name: New name
             description: New description
-            model_provider: New model provider
-            model_name: New model name
+            model_ref_id: New model reference ID (pins agent to a deployable model)
             system_message: New system message
             max_iterations: New max iterations
             temperature: New temperature
@@ -171,6 +174,11 @@ class AgentService:
         agent = await self.agent_repo.get(agent_id)
         if not agent or agent.organization_id != organization_id:
             return None
+
+        if model_ref_id is not None:
+            model_ref = await self.model_ref_repo.get_for_org(model_ref_id, organization_id)
+            if not model_ref:
+                raise ValueError(f"ModelRef {model_ref_id} not found")
 
         # Validate tool IDs if provided
         if tool_ids is not None:
@@ -189,10 +197,8 @@ class AgentService:
             update_data["name"] = name
         if description is not None:
             update_data["description"] = description
-        if model_provider is not None:
-            update_data["model_provider"] = model_provider
-        if model_name is not None:
-            update_data["model_name"] = model_name
+        if model_ref_id is not None:
+            update_data["model_ref_id"] = model_ref_id
         if system_message is not None:
             update_data["system_message"] = system_message
         if max_iterations is not None:

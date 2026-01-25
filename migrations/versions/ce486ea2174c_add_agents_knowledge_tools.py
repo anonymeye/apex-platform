@@ -35,25 +35,65 @@ def upgrade() -> None:
     op.create_index(op.f('ix_knowledge_bases_slug'), 'knowledge_bases', ['slug'], unique=False)
     op.create_index(op.f('ix_knowledge_bases_organization_id'), 'knowledge_bases', ['organization_id'], unique=False)
     
-    # Create agents table (depends on organizations)
-    op.create_table('agents',
-    sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('model_provider', sa.String(length=50), nullable=False),
-    sa.Column('model_name', sa.String(length=100), nullable=False),
-    sa.Column('system_message', sa.Text(), nullable=True),
-    sa.Column('max_iterations', sa.Integer(), nullable=False),
-    sa.Column('temperature', sa.Float(), nullable=True),
-    sa.Column('max_tokens', sa.Integer(), nullable=True),
-    sa.Column('config', postgresql.JSON(astext_type=sa.Text()), nullable=True),
-    sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=False),
-    sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    # Create connections table (depends on organizations)
+    op.create_table(
+        'connections',
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('connection_type', sa.String(length=50), nullable=False),  # vendor_api | openai_compatible
+        sa.Column('provider', sa.String(length=50), nullable=False),  # openai | anthropic | groq | openai_compatible
+        sa.Column('base_url', sa.String(length=500), nullable=True),
+        sa.Column('auth_type', sa.String(length=50), nullable=False),  # env | bearer | none
+        sa.Column('api_key_env_var', sa.String(length=255), nullable=True),
+        sa.Column('config', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_index(op.f('ix_connections_organization_id'), 'connections', ['organization_id'], unique=False)
+    op.create_index(op.f('ix_connections_provider'), 'connections', ['provider'], unique=False)
+
+    # Create model_refs table (depends on connections and organizations)
+    op.create_table(
+        'model_refs',
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('runtime_id', sa.String(length=255), nullable=False),  # model identifier expected by runtime
+        sa.Column('config', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+        sa.Column('connection_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.ForeignKeyConstraint(['connection_id'], ['connections.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_index(op.f('ix_model_refs_organization_id'), 'model_refs', ['organization_id'], unique=False)
+    op.create_index(op.f('ix_model_refs_connection_id'), 'model_refs', ['connection_id'], unique=False)
+
+    # Create agents table (depends on organizations and model_refs)
+    op.create_table(
+        'agents',
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('model_ref_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('system_message', sa.Text(), nullable=True),
+        sa.Column('max_iterations', sa.Integer(), nullable=False),
+        sa.Column('temperature', sa.Float(), nullable=True),
+        sa.Column('max_tokens', sa.Integer(), nullable=True),
+        sa.Column('config', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+        sa.Column('organization_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.ForeignKeyConstraint(['model_ref_id'], ['model_refs.id'], ondelete='RESTRICT'),
+        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id'),
     )
     op.create_index(op.f('ix_agents_organization_id'), 'agents', ['organization_id'], unique=False)
+    op.create_index(op.f('ix_agents_model_ref_id'), 'agents', ['model_ref_id'], unique=False)
     
     # Create documents table (depends on knowledge_bases)
     op.create_table('documents',
@@ -127,8 +167,17 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_documents_knowledge_base_id'), table_name='documents')
     op.drop_table('documents')
     
+    op.drop_index(op.f('ix_agents_model_ref_id'), table_name='agents')
     op.drop_index(op.f('ix_agents_organization_id'), table_name='agents')
     op.drop_table('agents')
+
+    op.drop_index(op.f('ix_model_refs_connection_id'), table_name='model_refs')
+    op.drop_index(op.f('ix_model_refs_organization_id'), table_name='model_refs')
+    op.drop_table('model_refs')
+
+    op.drop_index(op.f('ix_connections_provider'), table_name='connections')
+    op.drop_index(op.f('ix_connections_organization_id'), table_name='connections')
+    op.drop_table('connections')
     
     op.drop_index(op.f('ix_knowledge_bases_organization_id'), table_name='knowledge_bases')
     op.drop_index(op.f('ix_knowledge_bases_slug'), table_name='knowledge_bases')

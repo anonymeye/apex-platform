@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from apex.models.agent import Agent
+from apex.models.model_ref import ModelRef
 from apex.models.tool import AgentTool
 from apex.repositories.base import BaseRepository
 
@@ -31,6 +32,7 @@ class AgentRepository(BaseRepository[Agent]):
         result = await self.session.execute(
             select(Agent)
             .where(Agent.id == id)
+            .options(selectinload(Agent.model_ref).selectinload(ModelRef.connection))
             .options(selectinload(Agent.agent_tools).selectinload(AgentTool.tool))
         )
         return result.scalar_one_or_none()
