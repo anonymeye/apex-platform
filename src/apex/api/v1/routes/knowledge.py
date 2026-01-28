@@ -14,6 +14,8 @@ from apex.api.v1.schemas.knowledge import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
+    ToolResponse,
+    ToolUpdate,
 )
 from fastapi import Request
 from apex.core.database import get_db
@@ -23,6 +25,7 @@ from apex.repositories.knowledge_repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
+from apex.repositories.tool_repository import ToolRepository
 from apex.services.knowledge_service import KnowledgeService
 from apex.storage.vector_store import ApexVectorStore
 
@@ -465,3 +468,158 @@ async def upload_documents(
         tool_created=tool_info,
         message=f"Successfully uploaded {len(created_docs)} document chunks",
     )
+
+
+@router.get("/knowledge-bases/{kb_id}/tools", response_model=list[ToolResponse])
+async def list_tools(
+    kb_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """List all tools for a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        db: Database session
+        user_data: Current user data from token
+
+    Returns:
+        List of tools
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    tool_repo = ToolRepository(db)
+    tools = await tool_repo.get_by_knowledge_base(kb_id)
+
+    return [
+        ToolResponse(
+            id=tool.id,
+            name=tool.name,
+            description=tool.description,
+            tool_type=tool.tool_type,
+            knowledge_base_id=tool.knowledge_base_id,
+            config=tool.config,
+            rag_template=tool.rag_template,
+            rag_k=tool.rag_k,
+            auto_created=tool.auto_created,
+            organization_id=tool.organization_id,
+            created_at=tool.created_at.isoformat(),
+            updated_at=tool.updated_at.isoformat(),
+        )
+        for tool in tools
+    ]
+
+
+@router.put("/knowledge-bases/{kb_id}/tools/{tool_id}", response_model=ToolResponse)
+async def update_tool(
+    kb_id: UUID,
+    tool_id: UUID,
+    tool_data: ToolUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Update a tool for a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        tool_id: Tool ID
+        tool_data: Tool update data
+        db: Database session
+        user_data: Current user data from token
+
+    Returns:
+        Updated tool
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    tool_repo = ToolRepository(db)
+    tool = await tool_repo.get(tool_id)
+
+    if not tool or tool.knowledge_base_id != kb_id or tool.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found"
+        )
+
+    update_data = {}
+    if tool_data.name is not None:
+        update_data["name"] = tool_data.name
+    if tool_data.description is not None:
+        update_data["description"] = tool_data.description
+    if tool_data.rag_template is not None:
+        update_data["rag_template"] = tool_data.rag_template
+    if tool_data.rag_k is not None:
+        update_data["rag_k"] = tool_data.rag_k
+
+    if update_data:
+        updated_tool = await tool_repo.update(tool_id, update_data)
+    else:
+        updated_tool = tool
+
+    return ToolResponse(
+        id=updated_tool.id,
+        name=updated_tool.name,
+        description=updated_tool.description,
+        tool_type=updated_tool.tool_type,
+        knowledge_base_id=updated_tool.knowledge_base_id,
+        config=updated_tool.config,
+        rag_template=updated_tool.rag_template,
+        rag_k=updated_tool.rag_k,
+        auto_created=updated_tool.auto_created,
+        organization_id=updated_tool.organization_id,
+        created_at=updated_tool.created_at.isoformat(),
+        updated_at=updated_tool.updated_at.isoformat(),
+    )
+
+
+@router.delete(
+    "/knowledge-bases/{kb_id}/tools/{tool_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_tool(
+    kb_id: UUID,
+    tool_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Delete a tool from a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        tool_id: Tool ID
+        db: Database session
+        user_data: Current user data from token
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    tool_repo = ToolRepository(db)
+    tool = await tool_repo.get(tool_id)
+
+    if not tool or tool.knowledge_base_id != kb_id or tool.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tool not found"
+        )
+
+    await tool_repo.delete(tool_id)

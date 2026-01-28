@@ -81,3 +81,32 @@ class DocumentUploadResponse(BaseModel):
     documents: list[DocumentResponse]
     tool_created: Optional[dict] = Field(None, description="Created tool info if auto_create_tool=True")
     message: str
+
+
+class ToolResponse(BaseModel):
+    """Schema for tool response."""
+
+    id: UUID
+    name: str
+    description: str
+    tool_type: str
+    knowledge_base_id: Optional[UUID] = None
+    config: Optional[dict] = None
+    rag_template: Optional[str] = None
+    rag_k: Optional[int] = None
+    auto_created: bool
+    organization_id: UUID
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ToolUpdate(BaseModel):
+    """Schema for updating a tool."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Tool name")
+    description: Optional[str] = Field(None, description="Tool description")
+    rag_template: Optional[str] = Field(None, description="RAG prompt template")
+    rag_k: Optional[int] = Field(None, ge=1, le=20, description="Number of chunks to retrieve")
