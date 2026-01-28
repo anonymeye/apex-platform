@@ -110,3 +110,9 @@ class ToolUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Tool description")
     rag_template: Optional[str] = Field(None, description="RAG prompt template")
     rag_k: Optional[int] = Field(None, ge=1, le=20, description="Number of chunks to retrieve")
+
+
+class BulkDeleteRequest(BaseModel):
+    """Schema for bulk delete request."""
+
+    document_ids: list[UUID] = Field(..., min_items=1, description="List of document IDs to delete")

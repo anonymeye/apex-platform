@@ -3,11 +3,13 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from apex.api.dependencies import get_current_user_from_token
 from apex.api.v1.schemas.knowledge import (
+    BulkDeleteRequest,
     DocumentResponse,
     DocumentUploadRequest,
     DocumentUploadResponse,
@@ -26,6 +28,7 @@ from apex.repositories.knowledge_repository import (
     KnowledgeBaseRepository,
 )
 from apex.repositories.tool_repository import ToolRepository
+from apex.utils.file_parser import parse_file
 from apex.services.knowledge_service import KnowledgeService
 from apex.storage.vector_store import ApexVectorStore
 
@@ -383,6 +386,60 @@ async def delete_document(
 
 
 @router.post(
+    "/knowledge-bases/{kb_id}/documents/bulk-delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def bulk_delete_documents(
+    kb_id: UUID,
+    request: Request,
+    delete_request: BulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Bulk delete documents from a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        document_ids: List of document IDs to delete
+        db: Database session
+        user_data: Current user data from token
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    doc_repo = DocumentRepository(db)
+    document_ids = delete_request.document_ids
+    
+    # Verify all documents belong to this KB
+    for doc_id in document_ids:
+        doc = await doc_repo.get(doc_id)
+        if not doc or doc.knowledge_base_id != kb_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document {doc_id} not found or doesn't belong to this knowledge base"
+            )
+
+    knowledge_service = KnowledgeService(
+        knowledge_base_repo=kb_repo,
+        document_repo=doc_repo,
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
+        chat_model=get_chat_model(),
+    )
+
+    # Delete all documents
+    for doc_id in document_ids:
+        await knowledge_service.delete_document(document_id=doc_id)
+
+
+@router.post(
     "/knowledge-bases/{kb_id}/documents",
     response_model=DocumentUploadResponse,
     status_code=status.HTTP_201_CREATED,
@@ -467,6 +524,135 @@ async def upload_documents(
         ],
         tool_created=tool_info,
         message=f"Successfully uploaded {len(created_docs)} document chunks",
+    )
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/documents/upload-files",
+    response_model=DocumentUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_files(
+    kb_id: UUID,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    auto_create_tool: bool = Form(True),
+    auto_add_to_agent_id: Optional[str] = Form(None),
+    chunk_size: int = Form(1000),
+    chunk_overlap: int = Form(200),
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Upload files to a knowledge base.
+    
+    Supports: .txt, .pdf, .docx files
+    
+    Args:
+        kb_id: Knowledge base ID
+        files: List of files to upload
+        auto_create_tool: Whether to auto-create RAG tool
+        auto_add_to_agent_id: Optional agent ID to auto-add tool to
+        chunk_size: Chunk size for text splitting
+        chunk_overlap: Chunk overlap for text splitting
+        db: Database session
+        user_data: Current user data from token
+    
+    Returns:
+        Upload response with created documents and tool info
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    # Parse files and extract text content
+    documents = []
+    for file in files:
+        try:
+            file_content = await file.read()
+            content = await parse_file(file_content, file.filename or "unknown", file.content_type)
+            
+            documents.append({
+                "content": content,
+                "source": file.filename or "unknown",
+                "metadata": {"filename": file.filename or "unknown", "content_type": file.content_type},
+            })
+        except ValueError as e:
+            logger.warning(f"Failed to parse file {file.filename}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to parse file {file.filename}: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Error processing file {file.filename}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error processing file {file.filename}: {str(e)}"
+            )
+
+    if not documents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid files were uploaded"
+        )
+
+    knowledge_service = KnowledgeService(
+        knowledge_base_repo=kb_repo,
+        document_repo=DocumentRepository(db),
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
+        chat_model=get_chat_model(),
+    )
+
+    agent_id = None
+    if auto_add_to_agent_id:
+        try:
+            agent_id = UUID(auto_add_to_agent_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid agent ID format"
+            )
+
+    created_docs, created_tool = await knowledge_service.upload_documents(
+        knowledge_base_id=kb_id,
+        documents=documents,
+        auto_create_tool=auto_create_tool,
+        auto_add_to_agent_id=agent_id,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+    tool_info = None
+    if created_tool:
+        tool_info = {
+            "id": str(created_tool.id),
+            "name": created_tool.name,
+            "description": created_tool.description,
+        }
+
+    return DocumentUploadResponse(
+        documents=[
+            DocumentResponse(
+                id=doc.id,
+                knowledge_base_id=doc.knowledge_base_id,
+                content=doc.content,
+                source=doc.source,
+                chunk_index=doc.chunk_index,
+                vector_id=doc.vector_id,
+                metadata=doc.meta_data,
+                created_at=doc.created_at.isoformat(),
+                updated_at=doc.updated_at.isoformat(),
+            )
+            for doc in created_docs
+        ],
+        tool_created=tool_info,
+        message=f"Successfully uploaded {len(files)} file(s) ({len(created_docs)} chunks)",
     )
 
 
