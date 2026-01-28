@@ -42,6 +42,39 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info("APEX API STARTING UP")
     logger.info("=" * 80)
+    
+    # Preload embedding model
+    print("Preloading embedding model...", flush=True)
+    logger.info(f"Preloading embedding model: {settings.embedding_model}")
+    try:
+        from apex.ml.rag.embeddings import EmbeddingService
+        from conduit.rag import MemoryVectorStore
+        from apex.storage.vector_store import ApexVectorStore
+        
+        # Preload embedding service
+        embedding_service = EmbeddingService(
+            model_name=settings.embedding_model,
+            batch_size=settings.embedding_batch_size,
+        )
+        # Warm up the model with a dummy embedding to ensure it's loaded
+        await embedding_service.embed("warmup")
+        
+        # Preload vector store
+        vector_store = ApexVectorStore(MemoryVectorStore())
+        
+        # Store in app state for access by routes
+        app.state.embedding_service = embedding_service
+        app.state.vector_store = vector_store
+        
+        print(f"✓ Embedding model '{settings.embedding_model}' loaded successfully", flush=True)
+        logger.info(f"Embedding model '{settings.embedding_model}' preloaded successfully")
+    except Exception as e:
+        print(f"⚠ Failed to preload embedding model: {e}", flush=True)
+        logger.error(f"Failed to preload embedding model: {e}", exc_info=True)
+        # Don't fail startup - allow lazy loading as fallback
+        app.state.embedding_service = None
+        app.state.vector_store = None
+    
     # Database schema is managed by Alembic migrations (run in Dockerfile before startup)
     yield
     # Shutdown

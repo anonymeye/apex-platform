@@ -47,8 +47,7 @@ class KnowledgeBaseRetriever(VectorRetriever):
             List of (document, score) tuples
         """
         # Generate query embedding
-        embedding_result = await self.embedding_model.embed(query)
-        query_embedding = embedding_result["embeddings"][0]
+        query_embedding = await self.embedding_model.embed_query(query)
 
         # Search with knowledge base filter
         results = await self.apex_store.search_with_score(

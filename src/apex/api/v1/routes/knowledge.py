@@ -14,7 +14,9 @@ from apex.api.v1.schemas.knowledge import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
 )
+from fastapi import Request
 from apex.core.database import get_db
+from apex.core.config import settings
 from apex.ml.rag.embeddings import EmbeddingService
 from apex.repositories.knowledge_repository import (
     DocumentRepository,
@@ -27,27 +29,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
-# Global services (in production, use dependency injection)
+# Fallback global services (used if app state not available)
 _vector_store: ApexVectorStore | None = None
 _embedding_service: EmbeddingService | None = None
 _chat_model = None
 
 
-def get_vector_store() -> ApexVectorStore:
-    """Get or create vector store instance."""
+def get_vector_store(request: Request) -> ApexVectorStore:
+    """Get vector store instance from app state or create fallback."""
+    # Try to get from app state (preloaded)
+    if hasattr(request.app.state, "vector_store") and request.app.state.vector_store:
+        return request.app.state.vector_store
+    
+    # Fallback to global singleton
     global _vector_store
     if _vector_store is None:
         from conduit.rag import MemoryVectorStore
-
         _vector_store = ApexVectorStore(MemoryVectorStore())
     return _vector_store
 
 
-def get_embedding_service() -> EmbeddingService:
-    """Get or create embedding service instance."""
+def get_embedding_service(request: Request) -> EmbeddingService:
+    """Get embedding service instance from app state or create fallback."""
+    # Try to get from app state (preloaded)
+    if hasattr(request.app.state, "embedding_service") and request.app.state.embedding_service:
+        return request.app.state.embedding_service
+    
+    # Fallback to lazy loading
     global _embedding_service
     if _embedding_service is None:
-        _embedding_service = EmbeddingService()
+        _embedding_service = EmbeddingService(
+            model_name=settings.embedding_model,
+            batch_size=settings.embedding_batch_size,
+        )
     return _embedding_service
 
 
@@ -64,6 +78,7 @@ def get_chat_model():
 @router.post("/knowledge-bases", response_model=KnowledgeBaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_knowledge_base(
     kb_data: KnowledgeBaseCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user_data: dict = Depends(get_current_user_from_token),
 ):
@@ -84,8 +99,8 @@ async def create_knowledge_base(
     knowledge_service = KnowledgeService(
         knowledge_base_repo=kb_repo,
         document_repo=DocumentRepository(db),
-        vector_store=get_vector_store(),
-        embedding_service=get_embedding_service(),
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
         chat_model=get_chat_model(),
     )
 
@@ -187,7 +202,8 @@ async def get_knowledge_base(
 )
 async def upload_documents(
     kb_id: UUID,
-    request: DocumentUploadRequest,
+    request: Request,
+    upload_request: DocumentUploadRequest,
     db: AsyncSession = Depends(get_db),
     user_data: dict = Depends(get_current_user_from_token),
 ):
@@ -212,31 +228,31 @@ async def upload_documents(
             status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
         )
 
-    # Convert request to document format
+    # Convert upload_request to document format
     documents = [
         {
             "content": doc.content,
             "source": doc.source,
             "metadata": doc.metadata,
         }
-        for doc in request.documents
+        for doc in upload_request.documents
     ]
 
     knowledge_service = KnowledgeService(
         knowledge_base_repo=kb_repo,
         document_repo=DocumentRepository(db),
-        vector_store=get_vector_store(),
-        embedding_service=get_embedding_service(),
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
         chat_model=get_chat_model(),
     )
 
     created_docs, created_tool = await knowledge_service.upload_documents(
         knowledge_base_id=kb_id,
         documents=documents,
-        auto_create_tool=request.auto_create_tool,
-        auto_add_to_agent_id=request.auto_add_to_agent_id,
-        chunk_size=request.chunk_size,
-        chunk_overlap=request.chunk_overlap,
+        auto_create_tool=upload_request.auto_create_tool,
+        auto_add_to_agent_id=upload_request.auto_add_to_agent_id,
+        chunk_size=upload_request.chunk_size,
+        chunk_overlap=upload_request.chunk_overlap,
     )
 
     tool_info = None

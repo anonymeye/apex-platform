@@ -3,11 +3,12 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apex.api.dependencies import get_current_user_from_token
 from apex.api.v1.schemas.chat import ChatRequest, ChatResponse
+from apex.core.config import settings
 from apex.core.database import get_db
 from apex.repositories.agent_repository import AgentRepository
 from apex.repositories.tool_repository import AgentToolRepository, ToolRepository
@@ -20,33 +21,48 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
-# Global services (in production, use dependency injection)
+# Fallback global services (used if app state not available)
 _vector_store: ApexVectorStore | None = None
 _embedding_service: EmbeddingService | None = None
 
 
-def get_vector_store() -> ApexVectorStore:
-    """Get or create vector store instance."""
+def get_vector_store(request: Request) -> ApexVectorStore:
+    """Get vector store instance from app state or create fallback."""
+    # Try to get from app state (preloaded)
+    if hasattr(request.app.state, "vector_store") and request.app.state.vector_store:
+        return request.app.state.vector_store
+    
+    # Fallback to global singleton
     global _vector_store
     if _vector_store is None:
         from conduit.rag import MemoryVectorStore
-
         _vector_store = ApexVectorStore(MemoryVectorStore())
     return _vector_store
 
 
-def get_embedding_service() -> EmbeddingService:
-    """Get or create embedding service instance."""
+def get_embedding_service(request: Request) -> EmbeddingService:
+    """Get embedding service instance from app state or create fallback."""
+    # Try to get from app state (preloaded)
+    if hasattr(request.app.state, "embedding_service") and request.app.state.embedding_service:
+        return request.app.state.embedding_service
+    
+    # Fallback to lazy loading
     global _embedding_service
     if _embedding_service is None:
-        _embedding_service = EmbeddingService()
+        _embedding_service = EmbeddingService(
+            model_name=settings.embedding_model,
+            batch_size=settings.embedding_batch_size,
+        )
     return _embedding_service
 
 
-def get_chat_service(db: AsyncSession = Depends(get_db)) -> ChatService:
+def get_chat_service(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> ChatService:
     """Get chat service instance."""
-    vector_store = get_vector_store()
-    embedding_service = get_embedding_service()
+    vector_store = get_vector_store(request)
+    embedding_service = get_embedding_service(request)
     
     # Get chat model (for RAG tools) - in production, load from config
     from apex.api.v1.routes.knowledge import get_chat_model

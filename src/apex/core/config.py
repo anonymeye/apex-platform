@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     app_name: str = "Apex API"
     debug: bool = False
     
+    # Embedding configuration
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_batch_size: int = 32
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

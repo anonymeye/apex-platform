@@ -33,7 +33,14 @@ class EmbeddingService:
         Returns:
             Dictionary with 'embeddings' key
         """
-        return await self.embedding_model.embed(texts)
+        if isinstance(texts, str):
+            # Single text - use embed_query
+            embedding = await self.embedding_model.embed_query(texts)
+            return {"embeddings": [embedding]}
+        else:
+            # List of texts - use embed_texts
+            embeddings = await self.embedding_model.embed_texts(texts)
+            return {"embeddings": embeddings}
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple documents.
@@ -44,5 +51,4 @@ class EmbeddingService:
         Returns:
             List of embedding vectors
         """
-        result = await self.embedding_model.embed(texts)
-        return result["embeddings"]
+        return await self.embedding_model.embed_texts(texts)
