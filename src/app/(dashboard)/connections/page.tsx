@@ -1,10 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plug, Loader2, Trash2 } from "lucide-react"
+import { Plug, Loader2, Trash2, Pencil, X } from "lucide-react"
 
 import { connectionsApi } from "@/lib/api/connections"
 import type { Connection, ConnectionCreate } from "@/lib/types/model"
@@ -27,6 +28,7 @@ type FormData = z.infer<typeof schema>
 
 export default function ConnectionsPage() {
   const queryClient = useQueryClient()
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const { data: connections, isLoading } = useQuery({
     queryKey: ["connections"],
@@ -46,6 +48,17 @@ export default function ConnectionsPage() {
     },
   })
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<ConnectionCreate> }) => {
+      const res = await connectionsApi.update(id, payload)
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections"] })
+      queryClient.invalidateQueries({ queryKey: ["model-refs"] })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await connectionsApi.delete(id)
@@ -55,6 +68,11 @@ export default function ConnectionsPage() {
       queryClient.invalidateQueries({ queryKey: ["model-refs"] })
     },
   })
+
+  const normalizeAuthType = (authType: string | null | undefined): "env" | "none" => {
+    const v = (authType || "").toLowerCase()
+    return v === "none" ? "none" : "env"
+  }
 
   const {
     register,
@@ -87,6 +105,63 @@ export default function ConnectionsPage() {
 
   const connectionType = watch("connection_type")
   const authType = watch("auth_type")
+
+  const {
+    register: registerEdit,
+    handleSubmit: handleSubmitEdit,
+    watch: watchEdit,
+    setValue: setValueEdit,
+    reset: resetEdit,
+    formState: { errors: editErrors },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      connection_type: "vendor_api",
+      provider: "openai",
+      auth_type: "env",
+    },
+  })
+
+  const editConnectionType = watchEdit("connection_type")
+  const editAuthType = watchEdit("auth_type")
+
+  const beginEdit = (c: Connection) => {
+    setEditingId(c.id)
+    resetEdit({
+      name: c.name,
+      connection_type: (c.connection_type as any) || "vendor_api",
+      provider: (c.provider as any) || "openai",
+      base_url: c.base_url || undefined,
+      auth_type: normalizeAuthType(c.auth_type),
+      api_key_env_var: c.api_key_env_var || undefined,
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    resetEdit({
+      connection_type: "vendor_api",
+      provider: "openai",
+      auth_type: "env",
+    })
+  }
+
+  const onSubmitEdit = async (data: FormData) => {
+    if (!editingId) return
+    await updateMutation.mutateAsync({
+      id: editingId,
+      payload: {
+        name: data.name.trim(),
+        connection_type: data.connection_type,
+        provider: data.provider,
+        base_url: data.base_url?.trim() || undefined,
+        auth_type: data.auth_type,
+        api_key_env_var: data.api_key_env_var?.trim() || undefined,
+        config: {},
+      },
+    })
+    cancelEdit()
+  }
 
   const connectionTypeOptions = [
     { value: "vendor_api", label: "Vendor API", description: "OpenAI/Anthropic/Groq via their hosted APIs" },
@@ -200,6 +275,101 @@ export default function ConnectionsPage() {
           <CardDescription>Used by Model Refs (and then by Agents)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {editingId && (
+            <Card className="border-primary/40">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">Edit Connection</CardTitle>
+                    <CardDescription>
+                      Update metadata. API keys should be provided via server env vars.
+                    </CardDescription>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={cancelEdit}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <form onSubmit={handleSubmitEdit(onSubmitEdit)}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_name">Name</Label>
+                    <Input id="edit_name" {...registerEdit("name")} />
+                    {editErrors.name && <p className="text-sm text-destructive">Name is required</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Connection Type</Label>
+                    <Combobox
+                      options={connectionTypeOptions}
+                      value={editConnectionType}
+                      onValueChange={(v) => setValueEdit("connection_type", v as any, { shouldValidate: true })}
+                      placeholder="Select connection type..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Provider</Label>
+                    <Combobox
+                      options={providerOptions}
+                      value={watchEdit("provider")}
+                      onValueChange={(v) => setValueEdit("provider", v as any, { shouldValidate: true })}
+                      placeholder="Select provider..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_base_url">Base URL (optional)</Label>
+                    <Input
+                      id="edit_base_url"
+                      placeholder={editConnectionType === "openai_compatible" ? "http://localhost:8000/v1" : "Leave empty for default"}
+                      {...registerEdit("base_url")}
+                    />
+                    {editConnectionType === "openai_compatible" && (
+                      <p className="text-xs text-muted-foreground">Required for OpenAI-compatible connections.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Auth</Label>
+                    <Combobox
+                      options={authTypeOptions}
+                      value={editAuthType}
+                      onValueChange={(v) => setValueEdit("auth_type", v as any, { shouldValidate: true })}
+                      placeholder="Select auth type..."
+                    />
+                  </div>
+
+                  {editAuthType === "env" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_api_key_env_var">API Key Env Var (optional)</Label>
+                      <Input id="edit_api_key_env_var" placeholder="e.g., GROQ_API_KEY" {...registerEdit("api_key_env_var")} />
+                      <p className="text-xs text-muted-foreground">
+                        This is the <span className="font-medium">env var name</span> on the backend container, not the key itself.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={cancelEdit} disabled={updateMutation.isPending}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={updateMutation.isPending}>
+                      {updateMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save changes"
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </form>
+            </Card>
+          )}
+
           {isLoading && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -217,15 +387,32 @@ export default function ConnectionsPage() {
                   {c.connection_type} • {c.provider}
                   {c.base_url ? ` • ${c.base_url}` : ""}
                 </div>
+                {c.auth_type?.toLowerCase() !== "none" && (
+                  <div className="text-xs text-muted-foreground">
+                    Auth: env var {c.api_key_env_var || "(default for provider)"}
+                  </div>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteMutation.mutate(c.id)}
-                disabled={deleteMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => beginEdit(c)}
+                  disabled={deleteMutation.isPending || updateMutation.isPending}
+                  aria-label="Edit connection"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => deleteMutation.mutate(c.id)}
+                  disabled={deleteMutation.isPending || updateMutation.isPending}
+                  aria-label="Delete connection"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
         </CardContent>
