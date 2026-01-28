@@ -119,6 +119,24 @@ export function useDeleteDocument() {
   })
 }
 
+export function useUploadFiles() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      kbId,
+      formData,
+    }: {
+      kbId: string
+      formData: FormData
+    }) => knowledgeApi.uploadFiles(kbId, formData).then((res) => res.data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", variables.kbId] })
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base", variables.kbId] })
+    },
+  })
+}
+
 export function useTools(kbId: string | null) {
   return useQuery({
     queryKey: ["tools", kbId],
@@ -155,6 +173,18 @@ export function useDeleteTool() {
       knowledgeApi.deleteTool(kbId, toolId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["tools", variables.kbId] })
+    },
+  })
+}
+
+export function useBulkDeleteDocuments() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ kbId, documentIds }: { kbId: string; documentIds: string[] }) =>
+      knowledgeApi.bulkDeleteDocuments(kbId, documentIds),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", variables.kbId] })
     },
   })
 }

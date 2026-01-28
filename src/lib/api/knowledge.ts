@@ -35,6 +35,21 @@ export const knowledgeApi = {
     apiClient.delete(
       `/knowledge/knowledge-bases/${kbId}/documents/${docId}`
     ),
+  bulkDeleteDocuments: (kbId: string, documentIds: string[]) =>
+    apiClient.post(`/knowledge/knowledge-bases/${kbId}/documents/bulk-delete`, {
+      document_ids: documentIds,
+    }),
+  uploadFiles: (
+    kbId: string,
+    formData: FormData
+  ) =>
+    apiClient.post<DocumentUploadResponse>(
+      `/knowledge/knowledge-bases/${kbId}/documents/upload-files`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    ),
 
   // Tool endpoints
   listTools: (kbId: string) =>

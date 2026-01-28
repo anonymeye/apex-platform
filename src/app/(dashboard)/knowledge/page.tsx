@@ -7,14 +7,17 @@ import { KnowledgeBaseList } from "@/components/knowledge/KnowledgeBaseList"
 import { KnowledgeBaseForm } from "@/components/knowledge/KnowledgeBaseForm"
 import { DocumentList } from "@/components/knowledge/DocumentList"
 import { DocumentUpload } from "@/components/knowledge/DocumentUpload"
+import { FileUpload } from "@/components/knowledge/FileUpload"
 import { ToolList } from "@/components/knowledge/ToolList"
 import { ToolForm } from "@/components/knowledge/ToolForm"
-import type { KnowledgeBase, Tool } from "@/lib/types/knowledge"
+import { DocumentPreview } from "@/components/knowledge/DocumentPreview"
+import type { KnowledgeBase, Tool, Document } from "@/lib/types/knowledge"
 
 export default function KnowledgePage() {
   const [selectedKB, setSelectedKB] = useState<KnowledgeBase | null>(null)
   const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null)
   const [editingTool, setEditingTool] = useState<Tool | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
   const handleSelectKB = (kb: KnowledgeBase) => {
@@ -113,21 +116,38 @@ export default function KnowledgePage() {
           <div className="space-y-6">
             <ToolList kbId={selectedKB.id} onEdit={handleEditTool} />
             
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-4">
-                <DocumentUpload
-                  kbId={selectedKB.id}
-                  onSuccess={() => {
-                    // Documents will automatically refresh via query invalidation
-                  }}
-                />
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-4">
+                  <FileUpload
+                    kbId={selectedKB.id}
+                    onSuccess={() => {
+                      // Documents will automatically refresh via query invalidation
+                    }}
+                  />
+                </div>
+                <div className="space-y-4">
+                  <DocumentUpload
+                    kbId={selectedKB.id}
+                    onSuccess={() => {
+                      // Documents will automatically refresh via query invalidation
+                    }}
+                  />
+                </div>
               </div>
-              <div className="space-y-4">
-                <DocumentList kbId={selectedKB.id} />
-              </div>
+              <DocumentList
+                kbId={selectedKB.id}
+                onPreview={(doc) => setPreviewDoc(doc)}
+              />
             </div>
           </div>
         )}
+
+        <DocumentPreview
+          document={previewDoc}
+          open={!!previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
       </div>
     )
   }
