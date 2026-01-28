@@ -56,3 +56,25 @@ export interface DocumentUploadResponse {
   } | null
   message: string
 }
+
+export interface Tool {
+  id: string
+  name: string
+  description: string
+  tool_type: string
+  knowledge_base_id?: string | null
+  config?: Record<string, any> | null
+  rag_template?: string | null
+  rag_k?: number | null
+  auto_created: boolean
+  organization_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ToolUpdate {
+  name?: string
+  description?: string
+  rag_template?: string | null
+  rag_k?: number
+}

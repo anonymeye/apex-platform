@@ -6,6 +6,8 @@ import type {
   Document,
   DocumentUploadRequest,
   DocumentUploadResponse,
+  Tool,
+  ToolUpdate,
 } from "@/lib/types/knowledge"
 
 export const knowledgeApi = {
@@ -33,4 +35,12 @@ export const knowledgeApi = {
     apiClient.delete(
       `/knowledge/knowledge-bases/${kbId}/documents/${docId}`
     ),
+
+  // Tool endpoints
+  listTools: (kbId: string) =>
+    apiClient.get<Tool[]>(`/knowledge/knowledge-bases/${kbId}/tools`),
+  updateTool: (kbId: string, toolId: string, data: ToolUpdate) =>
+    apiClient.put<Tool>(`/knowledge/knowledge-bases/${kbId}/tools/${toolId}`, data),
+  deleteTool: (kbId: string, toolId: string) =>
+    apiClient.delete(`/knowledge/knowledge-bases/${kbId}/tools/${toolId}`),
 }

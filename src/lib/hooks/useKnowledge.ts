@@ -6,6 +6,8 @@ import type {
   KnowledgeBaseUpdate,
   Document,
   DocumentUploadRequest,
+  Tool,
+  ToolUpdate,
 } from "@/lib/types/knowledge"
 
 export function useKnowledgeBases() {
@@ -113,6 +115,46 @@ export function useDeleteDocument() {
       knowledgeApi.deleteDocument(kbId, docId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["documents", variables.kbId] })
+    },
+  })
+}
+
+export function useTools(kbId: string | null) {
+  return useQuery({
+    queryKey: ["tools", kbId],
+    queryFn: () => knowledgeApi.listTools(kbId!).then((res) => res.data),
+    enabled: !!kbId,
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
+export function useUpdateTool() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      kbId,
+      toolId,
+      data,
+    }: {
+      kbId: string
+      toolId: string
+      data: ToolUpdate
+    }) => knowledgeApi.updateTool(kbId, toolId, data).then((res) => res.data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["tools", variables.kbId] })
+    },
+  })
+}
+
+export function useDeleteTool() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ kbId, toolId }: { kbId: string; toolId: string }) =>
+      knowledgeApi.deleteTool(kbId, toolId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["tools", variables.kbId] })
     },
   })
 }
