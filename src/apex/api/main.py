@@ -2,13 +2,26 @@
 
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError, DisconnectionError, DatabaseError
+
+# Load environment variables from .env file
+# dotenv searches current directory and parent directories automatically
+load_dotenv(override=True)
+
+# Debug: Log if GROQ_API_KEY is loaded (for troubleshooting)
+if os.getenv("GROQ_API_KEY"):
+    print("✓ GROQ_API_KEY loaded from environment", flush=True)
+else:
+    print("⚠ GROQ_API_KEY not found in environment", flush=True)
 
 from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model_refs
 from apex.core.config import settings
@@ -54,11 +67,100 @@ app.add_middleware(
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests."""
-    response = await call_next(request)
-    if response.status_code == 422:
-        access_logger.error(f'{request.client.host if request.client else "unknown"} - "{request.method} {request.url.path} HTTP/1.1" {response.status_code} VALIDATION_ERROR')
-    return response
+    """Log all incoming requests with error handling."""
+    try:
+        response = await call_next(request)
+        if response.status_code == 422:
+            access_logger.error(
+                f'{request.client.host if request.client else "unknown"} - '
+                f'"{request.method} {request.url.path} HTTP/1.1" {response.status_code} VALIDATION_ERROR'
+            )
+        return response
+    except Exception as e:
+        # Log the exception before re-raising so it can be handled by exception handlers
+        logger.error(
+            f"Unhandled exception in middleware for {request.method} {request.url.path}: {str(e)}",
+            exc_info=True,
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "client": request.client.host if request.client else "unknown",
+            }
+        )
+        raise
+
+# Exception handler for database connection errors
+@app.exception_handler(OperationalError)
+async def database_operational_error_handler(request: Request, exc: OperationalError):
+    """Handle database operational errors (connection failures, etc.)."""
+    error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
+    logger.error(
+        f"Database operational error: {error_msg}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error_type": type(exc).__name__,
+            "error_message": error_msg,
+        }
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "Database connection error. Please check database availability.",
+            "error": "database_unavailable",
+        },
+    )
+
+
+@app.exception_handler(DisconnectionError)
+async def database_disconnection_error_handler(request: Request, exc: DisconnectionError):
+    """Handle database disconnection errors."""
+    error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
+    logger.error(
+        f"Database disconnection error: {error_msg}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error_type": type(exc).__name__,
+            "error_message": error_msg,
+        }
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "Database connection lost. Please retry.",
+            "error": "database_disconnected",
+        },
+    )
+
+
+@app.exception_handler(DatabaseError)
+async def database_error_handler(request: Request, exc: DatabaseError):
+    """Handle general database errors."""
+    error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
+    logger.error(
+        f"Database error: {error_msg}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error_type": type(exc).__name__,
+            "error_message": error_msg,
+        }
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Database error occurred.",
+            "error": "database_error",
+        },
+    )
+
 
 # Exception handler for validation errors
 # FastAPI automatically calls this handler when RequestValidationError is raised
@@ -94,6 +196,45 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "detail": exc.errors(),
             "body": body_str if body_str != 'Empty body' else None
+        },
+    )
+
+
+# Global exception handler for all unhandled exceptions
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions with detailed logging."""
+    error_type = type(exc).__name__
+    error_msg = str(exc)
+    
+    logger.error(
+        f"Unhandled exception: {error_type}: {error_msg}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "client": request.client.host if request.client else "unknown",
+            "error_type": error_type,
+            "error_message": error_msg,
+        }
+    )
+    
+    # Print to stdout for immediate visibility
+    print(
+        f'\n{"="*80}\n'
+        f'UNHANDLED EXCEPTION: {error_type}\n'
+        f'Path: {request.method} {request.url.path}\n'
+        f'Error: {error_msg}\n'
+        f'{"="*80}\n',
+        flush=True
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "An internal server error occurred.",
+            "error": "internal_server_error",
+            "error_type": error_type,
         },
     )
 

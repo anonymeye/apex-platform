@@ -7,7 +7,12 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/apex_db"
+    # Default uses 'postgres' service name for Docker, override with DATABASE_URL env var for local dev
+    database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/apex_db"
+    
+    # Migration control
+    # Set to False in production to run migrations manually or via init container
+    run_migrations_on_startup: bool = True
     
     # JWT
     secret_key: str = "your-secret-key-change-in-production"

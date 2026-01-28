@@ -69,18 +69,69 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
+    Includes retry logic with exponential backoff to handle
+    transient database connection issues.
     """
+    import time
+    from sqlalchemy.exc import OperationalError as SQLAlchemyOperationalError
+    
+    # Import psycopg2 exceptions if available (for sync migrations)
+    try:
+        import psycopg2
+        from psycopg2 import OperationalError as Psycopg2OperationalError
+        from psycopg2 import errors as psycopg2_errors
+        # Combine exception types that might be raised
+        connection_exceptions = (
+            SQLAlchemyOperationalError,
+            Psycopg2OperationalError,
+            psycopg2_errors.OperationalError,
+        )
+    except ImportError:
+        # psycopg2 not available, only catch SQLAlchemy exceptions
+        connection_exceptions = (SQLAlchemyOperationalError,)
+    
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+    # Retry connection with exponential backoff
+    max_retries = 5
+    retry_delay = 2
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            with connectable.connect() as connection:
+                context.configure(connection=connection, target_metadata=target_metadata)
 
-        with context.begin_transaction():
-            context.run_migrations()
+                with context.begin_transaction():
+                    context.run_migrations()
+            # Success - break out of retry loop
+            if attempt > 0:
+                print(f"Migration succeeded on attempt {attempt + 1}", flush=True)
+            break
+        except connection_exceptions as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = retry_delay * (2 ** attempt)
+                error_msg = str(e).split('\n')[0]  # Get first line of error
+                print(
+                    f"Database connection failed (attempt {attempt + 1}/{max_retries}): {error_msg}",
+                    flush=True
+                )
+                print(f"Retrying in {wait_time} seconds...", flush=True)
+                time.sleep(wait_time)
+            else:
+                # Final attempt failed
+                print(f"Failed to connect to database after {max_retries} attempts.", flush=True)
+                print(f"Last error: {str(last_exception)}", flush=True)
+                raise
+        except Exception as e:
+            # Non-connection errors should not be retried
+            print(f"Migration failed with non-retryable error: {str(e)}", flush=True)
+            raise
 
 
 if context.is_offline_mode():
