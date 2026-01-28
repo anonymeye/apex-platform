@@ -1,39 +1,130 @@
 "use client"
 
-import { useAgentStore } from "@/lib/store/agentStore"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Book } from "lucide-react"
-import Link from "next/link"
+import { Plus, X, ArrowLeft } from "lucide-react"
+import { KnowledgeBaseList } from "@/components/knowledge/KnowledgeBaseList"
+import { KnowledgeBaseForm } from "@/components/knowledge/KnowledgeBaseForm"
+import { DocumentList } from "@/components/knowledge/DocumentList"
+import { DocumentUpload } from "@/components/knowledge/DocumentUpload"
+import type { KnowledgeBase } from "@/lib/types/knowledge"
 
 export default function KnowledgePage() {
-  const { selectedAgent } = useAgentStore()
+  const [selectedKB, setSelectedKB] = useState<KnowledgeBase | null>(null)
+  const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
-  if (!selectedAgent) {
+  const handleSelectKB = (kb: KnowledgeBase) => {
+    setSelectedKB(kb)
+  }
+
+  const handleEditKB = (kb: KnowledgeBase) => {
+    setEditingKB(kb)
+    setShowCreateForm(true)
+  }
+
+  const handleFormSuccess = () => {
+    setShowCreateForm(false)
+    setEditingKB(null)
+  }
+
+  const handleFormCancel = () => {
+    setShowCreateForm(false)
+    setEditingKB(null)
+  }
+
+  const handleBackToList = () => {
+    setSelectedKB(null)
+  }
+
+  // Show create/edit form
+  if (showCreateForm) {
     return (
-      <div className="flex h-full flex-col items-center justify-center space-y-4">
-        <Book className="h-12 w-12 text-muted-foreground" />
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-semibold">No Agent Selected</h2>
-          <p className="text-muted-foreground">
-            Please select an agent to manage its knowledge base
-          </p>
-          <Button asChild className="mt-4">
-            <Link href="/agents">Go to Agents</Link>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">
+              {editingKB ? "Edit Knowledge Base" : "Create Knowledge Base"}
+            </h1>
+            <p className="text-muted-foreground">
+              {editingKB
+                ? "Update the knowledge base details"
+                : "Create a new knowledge base to organize your documents"}
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleFormCancel}>
+            <X className="h-4 w-4" />
           </Button>
+        </div>
+        <KnowledgeBaseForm
+          knowledgeBase={editingKB}
+          onSuccess={handleFormSuccess}
+          onCancel={handleFormCancel}
+        />
+      </div>
+    )
+  }
+
+  // Show selected knowledge base details and documents
+  if (selectedKB) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={handleBackToList}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Knowledge Bases
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">{selectedKB.name}</h1>
+              {selectedKB.description && (
+                <p className="text-muted-foreground">{selectedKB.description}</p>
+              )}
+            </div>
+          </div>
+          <Button variant="outline" onClick={() => handleEditKB(selectedKB)}>
+            Edit Knowledge Base
+          </Button>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-4">
+            <DocumentUpload
+              kbId={selectedKB.id}
+              onSuccess={() => {
+                // Documents will automatically refresh via query invalidation
+              }}
+            />
+          </div>
+          <div className="space-y-4">
+            <DocumentList kbId={selectedKB.id} />
+          </div>
         </div>
       </div>
     )
   }
 
+  // Show knowledge bases list
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Knowledge</h1>
-        <p className="text-muted-foreground">
-          Agent: <span className="font-medium">{selectedAgent.name}</span>
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Knowledge Bases</h1>
+          <p className="text-muted-foreground">
+            Manage your knowledge bases and documents
+          </p>
+        </div>
+        <Button onClick={() => setShowCreateForm(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Create Knowledge Base
+        </Button>
       </div>
-      {/* Knowledge management UI will be added here */}
+
+      <KnowledgeBaseList
+        onSelect={handleSelectKB}
+        selectedId={selectedKB?.id}
+        onEdit={handleEditKB}
+      />
     </div>
   )
 }
