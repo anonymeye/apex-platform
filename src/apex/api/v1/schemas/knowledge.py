@@ -14,6 +14,14 @@ class KnowledgeBaseCreate(BaseModel):
     metadata: Optional[dict] = Field(default_factory=dict, description="Optional metadata")
 
 
+class KnowledgeBaseUpdate(BaseModel):
+    """Schema for updating a knowledge base."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Knowledge base name")
+    description: Optional[str] = Field(None, description="Optional description")
+    metadata: Optional[dict] = Field(None, description="Optional metadata")
+
+
 class KnowledgeBaseResponse(BaseModel):
     """Schema for knowledge base response."""
 

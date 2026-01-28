@@ -103,6 +103,90 @@ class KnowledgeService:
         logger.info(f"Created knowledge base: {name} (id: {kb.id})")
         return kb
 
+    async def update_knowledge_base(
+        self,
+        knowledge_base_id: UUID,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> "KnowledgeBase":
+        """Update a knowledge base.
+
+        Args:
+            knowledge_base_id: Knowledge base ID
+            name: Optional new name
+            description: Optional new description
+            metadata: Optional new metadata
+
+        Returns:
+            Updated knowledge base
+        """
+        kb = await self.kb_repo.get(knowledge_base_id)
+        if not kb:
+            raise ValueError(f"Knowledge base {knowledge_base_id} not found")
+
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+            # Regenerate slug if name changed
+            update_data["slug"] = self._generate_slug(name)
+        if description is not None:
+            update_data["description"] = description
+        if metadata is not None:
+            update_data["meta_data"] = metadata
+
+        if update_data:
+            updated_kb = await self.kb_repo.update(knowledge_base_id, update_data)
+            logger.info(f"Updated knowledge base: {kb.name} (id: {kb.id})")
+            return updated_kb
+
+        return kb
+
+    async def delete_knowledge_base(self, knowledge_base_id: UUID) -> None:
+        """Delete a knowledge base and all its documents.
+
+        Args:
+            knowledge_base_id: Knowledge base ID
+        """
+        kb = await self.kb_repo.get(knowledge_base_id)
+        if not kb:
+            raise ValueError(f"Knowledge base {knowledge_base_id} not found")
+
+        # Delete all documents from vector store
+        documents = await self.doc_repo.get_by_knowledge_base(knowledge_base_id)
+        if documents:
+            vector_ids = [doc.vector_id for doc in documents if doc.vector_id and doc.vector_id.strip()]
+            if vector_ids:
+                await self.vector_store.delete_documents(vector_ids, knowledge_base_id)
+
+        # Delete documents from database
+        for doc in documents:
+            await self.doc_repo.delete(doc.id)
+
+        # Delete knowledge base
+        await self.kb_repo.delete(knowledge_base_id)
+
+        logger.info(f"Deleted knowledge base: {kb.name} (id: {kb.id})")
+
+    async def delete_document(self, document_id: UUID) -> None:
+        """Delete a single document.
+
+        Args:
+            document_id: Document ID
+        """
+        doc = await self.doc_repo.get(document_id)
+        if not doc:
+            raise ValueError(f"Document {document_id} not found")
+
+        # Delete from vector store if vector_id exists
+        if doc.vector_id:
+            await self.vector_store.delete_documents([doc.vector_id], doc.knowledge_base_id)
+
+        # Delete from database
+        await self.doc_repo.delete(document_id)
+
+        logger.info(f"Deleted document {document_id} from knowledge base {doc.knowledge_base_id}")
+
     async def upload_documents(
         self,
         knowledge_base_id: UUID,

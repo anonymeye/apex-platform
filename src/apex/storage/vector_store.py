@@ -93,3 +93,21 @@ class ApexVectorStore:
         return await self.store.similarity_search_with_score(
             query_embedding, k=k, filter=filter_dict
         )
+
+    async def delete_documents(
+        self,
+        vector_ids: list[str],
+        knowledge_base_id: Optional[UUID] = None,
+    ) -> bool:
+        """Delete documents from vector store by IDs.
+
+        Args:
+            vector_ids: List of vector IDs to delete
+            knowledge_base_id: Optional knowledge base ID (for validation/filtering)
+
+        Returns:
+            True if successful
+        """
+        # Note: The underlying store doesn't support filtering by knowledge_base_id
+        # during delete, so we rely on the caller to provide correct IDs
+        return await self.store.delete(vector_ids)

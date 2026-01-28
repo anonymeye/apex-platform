@@ -13,6 +13,7 @@ from apex.api.v1.schemas.knowledge import (
     DocumentUploadResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
+    KnowledgeBaseUpdate,
 )
 from fastapi import Request
 from apex.core.database import get_db
@@ -193,6 +194,189 @@ async def get_knowledge_base(
         created_at=kb.created_at.isoformat(),
         updated_at=kb.updated_at.isoformat(),
     )
+
+
+@router.put("/knowledge-bases/{kb_id}", response_model=KnowledgeBaseResponse)
+async def update_knowledge_base(
+    kb_id: UUID,
+    kb_data: KnowledgeBaseUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Update a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        kb_data: Knowledge base update data
+        db: Database session
+        user_data: Current user data from token
+
+    Returns:
+        Updated knowledge base
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    knowledge_service = KnowledgeService(
+        knowledge_base_repo=kb_repo,
+        document_repo=DocumentRepository(db),
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
+        chat_model=get_chat_model(),
+    )
+
+    updated_kb = await knowledge_service.update_knowledge_base(
+        knowledge_base_id=kb_id,
+        name=kb_data.name,
+        description=kb_data.description,
+        metadata=kb_data.metadata,
+    )
+
+    return KnowledgeBaseResponse(
+        id=updated_kb.id,
+        name=updated_kb.name,
+        slug=updated_kb.slug,
+        description=updated_kb.description,
+        organization_id=updated_kb.organization_id,
+        metadata=updated_kb.meta_data,
+        created_at=updated_kb.created_at.isoformat(),
+        updated_at=updated_kb.updated_at.isoformat(),
+    )
+
+
+@router.delete("/knowledge-bases/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_knowledge_base(
+    kb_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Delete a knowledge base and all its documents.
+
+    Args:
+        kb_id: Knowledge base ID
+        db: Database session
+        user_data: Current user data from token
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    knowledge_service = KnowledgeService(
+        knowledge_base_repo=kb_repo,
+        document_repo=DocumentRepository(db),
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
+        chat_model=get_chat_model(),
+    )
+
+    await knowledge_service.delete_knowledge_base(knowledge_base_id=kb_id)
+
+
+@router.get("/knowledge-bases/{kb_id}/documents", response_model=list[DocumentResponse])
+async def list_documents(
+    kb_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """List all documents for a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        db: Database session
+        user_data: Current user data from token
+
+    Returns:
+        List of documents
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    doc_repo = DocumentRepository(db)
+    documents = await doc_repo.get_by_knowledge_base(kb_id)
+
+    return [
+        DocumentResponse(
+            id=doc.id,
+            knowledge_base_id=doc.knowledge_base_id,
+            content=doc.content,
+            source=doc.source,
+            chunk_index=doc.chunk_index,
+            vector_id=doc.vector_id,
+            metadata=doc.meta_data,
+            created_at=doc.created_at.isoformat(),
+            updated_at=doc.updated_at.isoformat(),
+        )
+        for doc in documents
+    ]
+
+
+@router.delete(
+    "/knowledge-bases/{kb_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_document(
+    kb_id: UUID,
+    doc_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Delete a document from a knowledge base.
+
+    Args:
+        kb_id: Knowledge base ID
+        doc_id: Document ID
+        db: Database session
+        user_data: Current user data from token
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    doc_repo = DocumentRepository(db)
+    doc = await doc_repo.get(doc_id)
+
+    if not doc or doc.knowledge_base_id != kb_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
+
+    knowledge_service = KnowledgeService(
+        knowledge_base_repo=kb_repo,
+        document_repo=doc_repo,
+        vector_store=get_vector_store(request),
+        embedding_service=get_embedding_service(request),
+        chat_model=get_chat_model(),
+    )
+
+    await knowledge_service.delete_document(document_id=doc_id)
 
 
 @router.post(
