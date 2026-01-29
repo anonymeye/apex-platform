@@ -16,6 +16,9 @@ from apex.api.v1.schemas.knowledge import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
+    KnowledgeSearchResult,
     ToolResponse,
     ToolUpdate,
 )
@@ -322,6 +325,54 @@ async def list_documents(
         )
         for doc in documents
     ]
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/search",
+    response_model=KnowledgeSearchResponse,
+)
+async def search_documents(
+    kb_id: UUID,
+    search_request: KnowledgeSearchRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Search a knowledge base by semantic similarity (verifies embeddings in vector store).
+
+    Embeds the query and returns the top-k chunks with similarity scores.
+    Use this to confirm that uploaded documents have embeddings and retrieval works.
+    """
+    organization_id = UUID(user_data.get("org_id"))
+
+    kb_repo = KnowledgeBaseRepository(db)
+    kb = await kb_repo.get(kb_id)
+
+    if not kb or kb.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge base not found"
+        )
+
+    embedding_service = get_embedding_service(request)
+    vector_store = get_vector_store(request)
+
+    query_embedding = (await embedding_service.embed(search_request.query))["embeddings"][0]
+    results_with_scores = await vector_store.search_with_score(
+        query_embedding,
+        k=search_request.k,
+        knowledge_base_id=kb_id,
+    )
+
+    return KnowledgeSearchResponse(
+        results=[
+            KnowledgeSearchResult(
+                content=doc.content,
+                score=score,
+                metadata=doc.metadata or {},
+            )
+            for doc, score in results_with_scores
+        ]
+    )
 
 
 @router.delete(

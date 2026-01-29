@@ -103,6 +103,27 @@ class ToolUpdate(BaseModel):
     config: Optional[dict] = Field(None, description="Type-specific config (e.g. RAG: rag_k, rag_template)")
 
 
+class KnowledgeSearchRequest(BaseModel):
+    """Schema for searching a knowledge base (vector similarity)."""
+
+    query: str = Field(..., min_length=1, description="Search query text")
+    k: int = Field(5, ge=1, le=20, description="Number of results to return")
+
+
+class KnowledgeSearchResult(BaseModel):
+    """One retrieved chunk with similarity score."""
+
+    content: str
+    score: float
+    metadata: Optional[dict] = None
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """Response from knowledge base search (verifies embeddings + retrieval)."""
+
+    results: list[KnowledgeSearchResult]
+
+
 class BulkDeleteRequest(BaseModel):
     """Schema for bulk delete request."""
 
