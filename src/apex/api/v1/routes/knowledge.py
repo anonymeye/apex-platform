@@ -39,7 +39,6 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 # Fallback global services (used if app state not available)
 _vector_store: ApexVectorStore | None = None
 _embedding_service: EmbeddingService | None = None
-_chat_model = None
 
 
 def get_vector_store(request: Request) -> ApexVectorStore:
@@ -72,16 +71,6 @@ def get_embedding_service(request: Request) -> EmbeddingService:
     return _embedding_service
 
 
-def get_chat_model():
-    """Get or create chat model instance."""
-    global _chat_model
-    if _chat_model is None:
-        # In production, load from config
-        # For now, return None and handle in service
-        pass
-    return _chat_model
-
-
 @router.post("/knowledge-bases", response_model=KnowledgeBaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_knowledge_base(
     kb_data: KnowledgeBaseCreate,
@@ -108,7 +97,6 @@ async def create_knowledge_base(
         document_repo=DocumentRepository(db),
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
     kb = await knowledge_service.create_knowledge_base(
@@ -236,7 +224,6 @@ async def update_knowledge_base(
         document_repo=DocumentRepository(db),
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
     updated_kb = await knowledge_service.update_knowledge_base(
@@ -287,7 +274,6 @@ async def delete_knowledge_base(
         document_repo=DocumentRepository(db),
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
     await knowledge_service.delete_knowledge_base(knowledge_base_id=kb_id)
@@ -379,7 +365,6 @@ async def delete_document(
         document_repo=doc_repo,
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
     await knowledge_service.delete_document(document_id=doc_id)
@@ -431,7 +416,6 @@ async def bulk_delete_documents(
         document_repo=doc_repo,
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
     # Delete all documents
@@ -487,25 +471,14 @@ async def upload_documents(
         document_repo=DocumentRepository(db),
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
-    created_docs, created_tool = await knowledge_service.upload_documents(
+    created_docs = await knowledge_service.upload_documents(
         knowledge_base_id=kb_id,
         documents=documents,
-        auto_create_tool=upload_request.auto_create_tool,
-        auto_add_to_agent_id=upload_request.auto_add_to_agent_id,
         chunk_size=upload_request.chunk_size,
         chunk_overlap=upload_request.chunk_overlap,
     )
-
-    tool_info = None
-    if created_tool:
-        tool_info = {
-            "id": str(created_tool.id),
-            "name": created_tool.name,
-            "description": created_tool.description,
-        }
 
     return DocumentUploadResponse(
         documents=[
@@ -522,7 +495,6 @@ async def upload_documents(
             )
             for doc in created_docs
         ],
-        tool_created=tool_info,
         message=f"Successfully uploaded {len(created_docs)} document chunks",
     )
 
@@ -536,8 +508,6 @@ async def upload_files(
     kb_id: UUID,
     request: Request,
     files: list[UploadFile] = File(...),
-    auto_create_tool: bool = Form(True),
-    auto_add_to_agent_id: Optional[str] = Form(None),
     chunk_size: int = Form(1000),
     chunk_overlap: int = Form(200),
     db: AsyncSession = Depends(get_db),
@@ -550,15 +520,13 @@ async def upload_files(
     Args:
         kb_id: Knowledge base ID
         files: List of files to upload
-        auto_create_tool: Whether to auto-create RAG tool
-        auto_add_to_agent_id: Optional agent ID to auto-add tool to
         chunk_size: Chunk size for text splitting
         chunk_overlap: Chunk overlap for text splitting
         db: Database session
         user_data: Current user data from token
     
     Returns:
-        Upload response with created documents and tool info
+        Upload response with created documents
     """
     organization_id = UUID(user_data.get("org_id"))
 
@@ -606,35 +574,14 @@ async def upload_files(
         document_repo=DocumentRepository(db),
         vector_store=get_vector_store(request),
         embedding_service=get_embedding_service(request),
-        chat_model=get_chat_model(),
     )
 
-    agent_id = None
-    if auto_add_to_agent_id:
-        try:
-            agent_id = UUID(auto_add_to_agent_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid agent ID format"
-            )
-
-    created_docs, created_tool = await knowledge_service.upload_documents(
+    created_docs = await knowledge_service.upload_documents(
         knowledge_base_id=kb_id,
         documents=documents,
-        auto_create_tool=auto_create_tool,
-        auto_add_to_agent_id=agent_id,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
-
-    tool_info = None
-    if created_tool:
-        tool_info = {
-            "id": str(created_tool.id),
-            "name": created_tool.name,
-            "description": created_tool.description,
-        }
 
     return DocumentUploadResponse(
         documents=[
@@ -651,7 +598,6 @@ async def upload_files(
             )
             for doc in created_docs
         ],
-        tool_created=tool_info,
         message=f"Successfully uploaded {len(files)} file(s) ({len(created_docs)} chunks)",
     )
 
@@ -693,9 +639,6 @@ async def list_tools(
             tool_type=tool.tool_type,
             knowledge_base_id=tool.knowledge_base_id,
             config=tool.config,
-            rag_template=tool.rag_template,
-            rag_k=tool.rag_k,
-            auto_created=tool.auto_created,
             organization_id=tool.organization_id,
             created_at=tool.created_at.isoformat(),
             updated_at=tool.updated_at.isoformat(),
@@ -747,10 +690,10 @@ async def update_tool(
         update_data["name"] = tool_data.name
     if tool_data.description is not None:
         update_data["description"] = tool_data.description
-    if tool_data.rag_template is not None:
-        update_data["rag_template"] = tool_data.rag_template
-    if tool_data.rag_k is not None:
-        update_data["rag_k"] = tool_data.rag_k
+    if tool_data.config is not None:
+        # Merge config: existing config updated with provided keys
+        existing = tool.config or {}
+        update_data["config"] = {**existing, **tool_data.config}
 
     if update_data:
         updated_tool = await tool_repo.update(tool_id, update_data)
@@ -764,9 +707,6 @@ async def update_tool(
         tool_type=updated_tool.tool_type,
         knowledge_base_id=updated_tool.knowledge_base_id,
         config=updated_tool.config,
-        rag_template=updated_tool.rag_template,
-        rag_k=updated_tool.rag_k,
-        auto_created=updated_tool.auto_created,
         organization_id=updated_tool.organization_id,
         created_at=updated_tool.created_at.isoformat(),
         updated_at=updated_tool.updated_at.isoformat(),

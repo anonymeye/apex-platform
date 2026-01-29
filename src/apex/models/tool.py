@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,15 +27,8 @@ class Tool(BaseModel):
         index=True,
     )
     
-    # Tool configuration (JSON schema for parameters, etc.)
+    # Tool configuration (type-specific: RAG k/template, API URL, etc.)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, default=dict)
-    
-    # RAG-specific config
-    rag_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    rag_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=5)  # Number of chunks to retrieve
-    
-    # Auto-creation flag
-    auto_created: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Organization
     organization_id: Mapped[UUID] = mapped_column(

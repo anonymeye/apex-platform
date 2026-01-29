@@ -50,10 +50,6 @@ class DocumentUploadRequest(BaseModel):
     """Schema for document upload request."""
 
     documents: list[DocumentUpload] = Field(..., min_items=1, description="List of documents to upload")
-    auto_create_tool: bool = Field(True, description="Whether to auto-create RAG tool")
-    auto_add_to_agent_id: Optional[UUID] = Field(
-        None, description="Optional agent ID to auto-add tool to"
-    )
     chunk_size: int = Field(1000, ge=100, le=5000, description="Chunk size for text splitting")
     chunk_overlap: int = Field(200, ge=0, le=500, description="Chunk overlap for text splitting")
 
@@ -79,12 +75,11 @@ class DocumentUploadResponse(BaseModel):
     """Schema for document upload response."""
 
     documents: list[DocumentResponse]
-    tool_created: Optional[dict] = Field(None, description="Created tool info if auto_create_tool=True")
     message: str
 
 
 class ToolResponse(BaseModel):
-    """Schema for tool response."""
+    """Schema for tool response (generic Tool)."""
 
     id: UUID
     name: str
@@ -92,9 +87,6 @@ class ToolResponse(BaseModel):
     tool_type: str
     knowledge_base_id: Optional[UUID] = None
     config: Optional[dict] = None
-    rag_template: Optional[str] = None
-    rag_k: Optional[int] = None
-    auto_created: bool
     organization_id: UUID
     created_at: str
     updated_at: str
@@ -104,12 +96,11 @@ class ToolResponse(BaseModel):
 
 
 class ToolUpdate(BaseModel):
-    """Schema for updating a tool."""
+    """Schema for updating a tool (generic: name, description, config)."""
 
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Tool name")
     description: Optional[str] = Field(None, description="Tool description")
-    rag_template: Optional[str] = Field(None, description="RAG prompt template")
-    rag_k: Optional[int] = Field(None, ge=1, le=20, description="Number of chunks to retrieve")
+    config: Optional[dict] = Field(None, description="Type-specific config (e.g. RAG: rag_k, rag_template)")
 
 
 class BulkDeleteRequest(BaseModel):

@@ -1,7 +1,6 @@
 """Service for creating and managing RAG tools."""
 
 import logging
-import re
 from typing import Optional
 from uuid import UUID
 
@@ -65,26 +64,6 @@ class RAGToolService:
 
         raise ValueError("RAGToolService is missing a usable retriever configuration")
 
-    def _generate_tool_name(self, kb_name: str, organization_id: UUID) -> str:
-        """Generate unique tool name from knowledge base name.
-
-        Args:
-            kb_name: Knowledge base name
-            organization_id: Organization ID for uniqueness
-
-        Returns:
-            Generated tool name (e.g., "search_product_docs")
-        """
-        # Convert to slug
-        slug = kb_name.lower().replace(" ", "_").replace("-", "_")
-        # Remove special chars
-        slug = re.sub(r"[^a-z0-9_]", "", slug)
-        base_name = f"search_{slug}"
-
-        # Ensure uniqueness by checking if name exists
-        # In production, you'd check the database, but for now we'll use base name
-        return base_name
-
     def _get_default_rag_template(self) -> str:
         """Get default RAG template.
 
@@ -142,83 +121,6 @@ class RAGToolService:
 
         return search_knowledge_base
 
-    async def auto_create_rag_tool(
-        self,
-        knowledge_base_id: UUID,
-        knowledge_base_name: str,
-        organization_id: UUID,
-        rag_template: Optional[str] = None,
-        rag_k: int = 5,
-        auto_add_to_agent_id: Optional[UUID] = None,
-    ) -> ToolModel:
-        """Auto-create a RAG tool when knowledge base is created.
-
-        Args:
-            knowledge_base_id: ID of the knowledge base
-            knowledge_base_name: Name of the knowledge base (for tool naming)
-            organization_id: Organization ID
-            rag_template: Optional custom RAG template
-            rag_k: Number of chunks to retrieve (default: 5)
-            auto_add_to_agent_id: Optional agent to auto-add tool to
-
-        Returns:
-            Created Tool database model
-        """
-        # Generate tool name
-        tool_name = self._generate_tool_name(knowledge_base_name, organization_id)
-
-        # Check if tool with this name already exists
-        existing_tool = await self.tool_repository.get_by_name(
-            tool_name, organization_id
-        )
-        if existing_tool:
-            logger.warning(
-                f"Tool with name '{tool_name}' already exists. Returning existing tool."
-            )
-            return existing_tool
-
-        # Use default template if not provided
-        template = rag_template or self._get_default_rag_template()
-
-        # Create tool description
-        tool_description = (
-            f"Search the {knowledge_base_name} knowledge base for information. "
-            f"Use this tool when you need to find information from the uploaded documents."
-        )
-
-        # Save tool to database
-        tool_model = await self.tool_repository.create(
-            name=tool_name,
-            description=tool_description,
-            tool_type="rag",
-            knowledge_base_id=knowledge_base_id,
-            organization_id=organization_id,
-            config={
-                "tool_name": tool_name,
-                "rag_template": template,
-                "rag_k": rag_k,
-            },
-            rag_template=template,
-            rag_k=rag_k,
-            auto_created=True,
-        )
-
-        logger.info(
-            f"Auto-created RAG tool '{tool_name}' for knowledge base '{knowledge_base_name}'"
-        )
-
-        # Auto-add to agent if specified
-        if auto_add_to_agent_id:
-            from apex.repositories.tool_repository import AgentToolRepository
-
-            agent_tool_repo = AgentToolRepository(self.tool_repository.session)
-            await agent_tool_repo.add_tool_to_agent(
-                auto_add_to_agent_id, tool_model.id
-            )
-            logger.info(f"Auto-added tool '{tool_name}' to agent {auto_add_to_agent_id}")
-
-        return tool_model
-
     async def create_conduit_tool_from_db(self, tool_model: ToolModel, chat_model=None) -> Tool:
         """Create a Conduit Tool instance from database model.
 
@@ -238,9 +140,10 @@ class RAGToolService:
         if model is None:
             raise ValueError("No chat model provided for RAG tool execution")
 
-        # Recreate RAG chain from stored config
-        template = tool_model.rag_template or self._get_default_rag_template()
-        k = tool_model.rag_k or 5
+        # Recreate RAG chain from stored config (generic Tool stores RAG params in config)
+        cfg = tool_model.config or {}
+        template = cfg.get("rag_template") or self._get_default_rag_template()
+        k = cfg.get("rag_k", 5)
         retriever = self._get_retriever_for_tool(tool_model)
 
         rag_chain = RAGChain(

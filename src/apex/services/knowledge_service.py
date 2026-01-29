@@ -8,12 +8,10 @@ from uuid import UUID
 from conduit.rag import Document, RecursiveSplitter
 
 from apex.ml.rag.embeddings import EmbeddingService
-from apex.ml.rag.retriever import KnowledgeBaseRetriever
 from apex.repositories.knowledge_repository import (
     DocumentRepository,
     KnowledgeBaseRepository,
 )
-from apex.services.rag_tool_service import RAGToolService
 from apex.storage.vector_store import ApexVectorStore
 
 logger = logging.getLogger(__name__)
@@ -28,7 +26,6 @@ class KnowledgeService:
         document_repo: DocumentRepository,
         vector_store: ApexVectorStore,
         embedding_service: EmbeddingService,
-        chat_model,
     ):
         """Initialize knowledge service.
 
@@ -37,13 +34,11 @@ class KnowledgeService:
             document_repo: Document repository
             vector_store: Vector store instance
             embedding_service: Embedding service
-            chat_model: Chat model for RAG
         """
         self.kb_repo = knowledge_base_repo
         self.doc_repo = document_repo
         self.vector_store = vector_store
         self.embedding_service = embedding_service
-        self.chat_model = chat_model
 
     def _generate_slug(self, name: str) -> str:
         """Generate URL-friendly slug from name.
@@ -191,23 +186,19 @@ class KnowledgeService:
         self,
         knowledge_base_id: UUID,
         documents: list[dict],  # List of {content, source, metadata}
-        auto_create_tool: bool = True,
-        auto_add_to_agent_id: Optional[UUID] = None,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-    ) -> tuple[list["Document"], Optional["Tool"]]:
-        """Upload documents to knowledge base and optionally auto-create RAG tool.
+    ) -> list["Document"]:
+        """Upload documents to knowledge base.
 
         Args:
             knowledge_base_id: Knowledge base ID
             documents: List of document dictionaries with content, source, metadata
-            auto_create_tool: Whether to auto-create RAG tool (default: True)
-            auto_add_to_agent_id: Optional agent ID to auto-add tool to
             chunk_size: Chunk size for text splitting
             chunk_overlap: Chunk overlap for text splitting
 
         Returns:
-            Tuple of (created documents, created tool if auto_create_tool=True)
+            List of created document records
         """
         # Get knowledge base
         kb = await self.kb_repo.get(knowledge_base_id)
@@ -283,44 +274,4 @@ class KnowledgeService:
             f"Uploaded {len(created_docs)} document chunks to knowledge base {kb.name}"
         )
 
-        # Auto-create RAG tool if requested
-        created_tool = None
-        if auto_create_tool:
-            # Check if tool already exists for this KB
-            from apex.repositories.tool_repository import ToolRepository
-
-            tool_repo = ToolRepository(self.kb_repo.session)
-            existing_tools = await tool_repo.get_by_knowledge_base(knowledge_base_id)
-
-            if not existing_tools:
-                # Create retriever for this knowledge base
-                retriever = KnowledgeBaseRetriever(
-                    vector_store=self.vector_store,
-                    embedding_model=self.embedding_service.embedding_model,
-                    knowledge_base_id=knowledge_base_id,
-                )
-
-                # Create RAG tool service
-                rag_tool_service = RAGToolService(
-                    tool_repository=tool_repo,
-                    vector_retriever=retriever,
-                    chat_model=self.chat_model,
-                )
-
-                # Auto-create tool
-                created_tool = await rag_tool_service.auto_create_rag_tool(
-                    knowledge_base_id=knowledge_base_id,
-                    knowledge_base_name=kb.name,
-                    organization_id=kb.organization_id,
-                    auto_add_to_agent_id=auto_add_to_agent_id,
-                )
-
-                logger.info(
-                    f"Auto-created RAG tool '{created_tool.name}' for knowledge base {kb.name}"
-                )
-            else:
-                logger.info(
-                    f"Tool already exists for knowledge base {kb.name}, skipping auto-creation"
-                )
-
-        return created_docs, created_tool
+        return created_docs
