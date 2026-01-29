@@ -215,15 +215,15 @@ class KnowledgeService:
             source = doc_data.get("source", "unknown")
             metadata = doc_data.get("metadata", {})
 
-            # Split into chunks
-            chunks = splitter.split_text(content)
+            # Split into chunks (split() returns list[Document])
+            chunks = splitter.split(content)
             for i, chunk in enumerate(chunks):
                 all_chunks.append(
                     {
-                        "content": chunk,
+                        "content": chunk.content,
                         "source": source,
                         "chunk_index": i,
-                        "metadata": {**metadata, "source": source},
+                        "metadata": {**metadata, "source": source, **chunk.metadata},
                     }
                 )
 
