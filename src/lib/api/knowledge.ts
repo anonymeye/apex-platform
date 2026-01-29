@@ -6,6 +6,8 @@ import type {
   Document,
   DocumentUploadRequest,
   DocumentUploadResponse,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResponse,
   Tool,
   ToolUpdate,
 } from "@/lib/types/knowledge"
@@ -39,6 +41,11 @@ export const knowledgeApi = {
     apiClient.post(`/knowledge/knowledge-bases/${kbId}/documents/bulk-delete`, {
       document_ids: documentIds,
     }),
+  searchKnowledgeBase: (kbId: string, data: KnowledgeSearchRequest) =>
+    apiClient.post<KnowledgeSearchResponse>(
+      `/knowledge/knowledge-bases/${kbId}/search`,
+      data
+    ),
   uploadFiles: (
     kbId: string,
     formData: FormData

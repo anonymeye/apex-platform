@@ -8,6 +8,7 @@ import { KnowledgeBaseForm } from "@/components/knowledge/KnowledgeBaseForm"
 import { DocumentList } from "@/components/knowledge/DocumentList"
 import { DocumentUpload } from "@/components/knowledge/DocumentUpload"
 import { FileUpload } from "@/components/knowledge/FileUpload"
+import { KnowledgeSearch } from "@/components/knowledge/KnowledgeSearch"
 import { ToolList } from "@/components/knowledge/ToolList"
 import { ToolForm } from "@/components/knowledge/ToolForm"
 import { DocumentPreview } from "@/components/knowledge/DocumentPreview"
@@ -139,6 +140,7 @@ export default function KnowledgePage() {
                 kbId={selectedKB.id}
                 onPreview={(doc) => setPreviewDoc(doc)}
               />
+              <KnowledgeSearch kbId={selectedKB.id} />
             </div>
           </div>
         )}

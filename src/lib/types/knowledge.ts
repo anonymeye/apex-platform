@@ -50,6 +50,21 @@ export interface DocumentUploadResponse {
   message: string
 }
 
+export interface KnowledgeSearchRequest {
+  query: string
+  k?: number
+}
+
+export interface KnowledgeSearchResult {
+  content: string
+  score: number
+  metadata?: Record<string, any> | null
+}
+
+export interface KnowledgeSearchResponse {
+  results: KnowledgeSearchResult[]
+}
+
 export interface Tool {
   id: string
   name: string

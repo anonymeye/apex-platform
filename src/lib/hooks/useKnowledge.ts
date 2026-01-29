@@ -6,6 +6,8 @@ import type {
   KnowledgeBaseUpdate,
   Document,
   DocumentUploadRequest,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResponse,
   Tool,
   ToolUpdate,
 } from "@/lib/types/knowledge"
@@ -186,5 +188,18 @@ export function useBulkDeleteDocuments() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["documents", variables.kbId] })
     },
+  })
+}
+
+export function useSearchKnowledgeBase() {
+  return useMutation({
+    mutationFn: ({
+      kbId,
+      data,
+    }: {
+      kbId: string
+      data: KnowledgeSearchRequest
+    }): Promise<KnowledgeSearchResponse> =>
+      knowledgeApi.searchKnowledgeBase(kbId, data).then((res) => res.data),
   })
 }
