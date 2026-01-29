@@ -235,18 +235,17 @@ class KnowledgeService:
         texts = [chunk["content"] for chunk in all_chunks]
         embeddings = await self.embedding_service.embed_documents(texts)
 
-        # Create Document objects for vector store
+        # Create Document objects for vector store (conduit Document.metadata is dict[str, str])
         vector_docs = []
         for chunk, embedding in zip(all_chunks, embeddings):
+            raw_meta = {
+                **chunk["metadata"],
+                "knowledge_base_id": str(knowledge_base_id),
+                "chunk_index": str(chunk["chunk_index"]),
+            }
+            metadata_str = {k: str(v) for k, v in raw_meta.items()}
             vector_docs.append(
-                Document(
-                    content=chunk["content"],
-                    metadata={
-                        **chunk["metadata"],
-                        "knowledge_base_id": str(knowledge_base_id),
-                        "chunk_index": chunk["chunk_index"],
-                    },
-                )
+                Document(content=chunk["content"], metadata=metadata_str)
             )
 
         # Add to vector store
