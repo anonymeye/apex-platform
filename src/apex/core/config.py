@@ -26,7 +26,14 @@ class Settings(BaseSettings):
     # Embedding configuration
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_batch_size: int = 32
-    
+
+    # Vector store: "pgvector" (persistent, same DB) or "memory" (in-memory, dev only)
+    vector_store_type: str = "pgvector"
+    # Embedding dimension must match the model (e.g. all-MiniLM-L6-v2 = 384)
+    embedding_dimension: int = 384
+    # Table name for pgvector store (easy to change if migrating to another schema)
+    vector_embeddings_table: str = "vector_embeddings"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

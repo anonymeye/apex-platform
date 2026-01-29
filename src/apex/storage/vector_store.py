@@ -1,4 +1,9 @@
-"""Vector store interface & implementations."""
+"""Vector store interface & implementations.
+
+The backing store (pgvector vs memory) is chosen by config so we can
+migrate to another backend (e.g. Qdrant) by adding a new implementation
+and switching VECTOR_STORE_TYPE.
+"""
 
 import logging
 from typing import Optional
@@ -6,7 +11,33 @@ from uuid import UUID
 
 from conduit.rag import Document, MemoryVectorStore, VectorStore
 
+from apex.core.config import settings
+
 logger = logging.getLogger(__name__)
+
+
+def create_vector_store() -> "ApexVectorStore":
+    """Create the vector store based on config (pgvector or memory).
+
+    Use this in app lifespan and route fallbacks so one place controls
+    which backend is used. To migrate to Qdrant/etc., add a new type
+    and implement conduit.rag.stores.base.VectorStore.
+    """
+    store_type = (settings.vector_store_type or "pgvector").strip().lower()
+    if store_type == "memory":
+        backend = MemoryVectorStore()
+        logger.info("Using in-memory vector store (not persistent)")
+    else:
+        # Default: pgvector (persistent)
+        from apex.storage.pgvector_store import PgVectorStore
+
+        backend = PgVectorStore(
+            settings.database_url,
+            table_name=settings.vector_embeddings_table,
+            embedding_dimension=settings.embedding_dimension,
+        )
+        logger.info("Using pgvector vector store (persistent)")
+    return ApexVectorStore(backend)
 
 
 class ApexVectorStore:

@@ -49,12 +49,12 @@ def get_vector_store(request: Request) -> ApexVectorStore:
     # Try to get from app state (preloaded)
     if hasattr(request.app.state, "vector_store") and request.app.state.vector_store:
         return request.app.state.vector_store
-    
-    # Fallback to global singleton
+
+    # Fallback to global singleton (uses same config: pgvector or memory)
     global _vector_store
     if _vector_store is None:
-        from conduit.rag import MemoryVectorStore
-        _vector_store = ApexVectorStore(MemoryVectorStore())
+        from apex.storage.vector_store import create_vector_store
+        _vector_store = create_vector_store()
     return _vector_store
 
 

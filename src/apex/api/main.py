@@ -48,8 +48,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Preloading embedding model: {settings.embedding_model}")
     try:
         from apex.ml.rag.embeddings import EmbeddingService
-        from conduit.rag import MemoryVectorStore
-        from apex.storage.vector_store import ApexVectorStore
+        from apex.storage.vector_store import create_vector_store
         
         # Preload embedding service
         embedding_service = EmbeddingService(
@@ -59,8 +58,8 @@ async def lifespan(app: FastAPI):
         # Warm up the model with a dummy embedding to ensure it's loaded
         await embedding_service.embed("warmup")
         
-        # Preload vector store
-        vector_store = ApexVectorStore(MemoryVectorStore())
+        # Preload vector store (pgvector or memory per config)
+        vector_store = create_vector_store()
         
         # Store in app state for access by routes
         app.state.embedding_service = embedding_service
