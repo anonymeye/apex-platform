@@ -41,19 +41,12 @@ export interface DocumentUpload {
 
 export interface DocumentUploadRequest {
   documents: DocumentUpload[]
-  auto_create_tool?: boolean
-  auto_add_to_agent_id?: string | null
   chunk_size?: number
   chunk_overlap?: number
 }
 
 export interface DocumentUploadResponse {
   documents: Document[]
-  tool_created?: {
-    id: string
-    name: string
-    description: string
-  } | null
   message: string
 }
 

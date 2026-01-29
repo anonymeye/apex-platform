@@ -19,7 +19,6 @@ export function FileUpload({ kbId, onSuccess }: FileUploadProps) {
   const [isDragActive, setIsDragActive] = useState(false)
   const [chunkSize, setChunkSize] = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
-  const [autoCreateTool, setAutoCreateTool] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -73,7 +72,6 @@ export function FileUpload({ kbId, onSuccess }: FileUploadProps) {
       files.forEach((file) => {
         formData.append("files", file)
       })
-      formData.append("auto_create_tool", autoCreateTool.toString())
       formData.append("chunk_size", chunkSize.toString())
       formData.append("chunk_overlap", chunkOverlap.toString())
 
@@ -200,20 +198,6 @@ export function FileUpload({ kbId, onSuccess }: FileUploadProps) {
                 disabled={isLoading}
               />
             </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="auto-create-tool-files"
-              checked={autoCreateTool}
-              onChange={(e) => setAutoCreateTool(e.target.checked)}
-              disabled={isLoading}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="auto-create-tool-files" className="cursor-pointer">
-              Automatically create RAG tool for this knowledge base
-            </Label>
           </div>
 
           <Button type="submit" disabled={isLoading || files.length === 0} className="w-full">

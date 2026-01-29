@@ -22,7 +22,6 @@ export function DocumentUpload({ kbId, onSuccess }: DocumentUploadProps) {
   >([{ content: "", source: "", metadata: {} }])
   const [chunkSize, setChunkSize] = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
-  const [autoCreateTool, setAutoCreateTool] = useState(true)
 
   const addDocument = () => {
     setDocuments([...documents, { content: "", source: "", metadata: {} }])
@@ -58,7 +57,6 @@ export function DocumentUpload({ kbId, onSuccess }: DocumentUploadProps) {
           source: doc.source || null,
           metadata: doc.metadata,
         })),
-        auto_create_tool: autoCreateTool,
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
       }
@@ -180,20 +178,6 @@ export function DocumentUpload({ kbId, onSuccess }: DocumentUploadProps) {
                 disabled={isLoading}
               />
             </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="auto-create-tool"
-              checked={autoCreateTool}
-              onChange={(e) => setAutoCreateTool(e.target.checked)}
-              disabled={isLoading}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="auto-create-tool" className="cursor-pointer">
-              Automatically create RAG tool for this knowledge base
-            </Label>
           </div>
 
           <Button type="submit" disabled={isLoading} className="w-full">
