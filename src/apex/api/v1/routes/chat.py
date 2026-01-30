@@ -63,16 +63,12 @@ def get_chat_service(
     """Get chat service instance."""
     vector_store = get_vector_store(request)
     embedding_service = get_embedding_service(request)
-    
-    # Get chat model (for RAG tools) - in production, load from config
-    from apex.api.v1.routes.knowledge import get_chat_model
-    chat_model = get_chat_model()
-    
+
     rag_tool_service = RAGToolService(
         tool_repository=ToolRepository(db),
         vector_retriever=vector_store,
         embedding_service=embedding_service,
-        chat_model=chat_model,
+        chat_model=None,
     )
     
     return ChatService(
