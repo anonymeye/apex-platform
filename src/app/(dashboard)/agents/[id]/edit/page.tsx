@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { agentsApi } from "@/lib/api/agents"
 import { connectionsApi } from "@/lib/api/connections"
 import { modelRefsApi } from "@/lib/api/model-refs"
+import { useToolsList } from "@/lib/hooks/useTools"
 import { useAgentStore } from "@/lib/store/agentStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +31,7 @@ const agentSchema = z.object({
   max_tokens: z.number().min(1).optional(),
   connection_id: z.string().min(1, "Please select a connection"),
   model_ref_id: z.string().min(1, "Please select a model"),
+  tool_ids: z.array(z.string()).optional(),
 })
 
 type AgentFormData = z.infer<typeof agentSchema>
@@ -47,7 +49,8 @@ function transformFormDataToApi(data: AgentFormData): AgentUpdate {
   if (data.system_message?.trim()) result.system_message = data.system_message.trim()
   if (data.temperature !== undefined && data.temperature !== null) result.temperature = data.temperature
   if (data.max_tokens !== undefined && data.max_tokens !== null) result.max_tokens = data.max_tokens
-  
+  if (data.tool_ids !== undefined) result.tool_ids = data.tool_ids
+
   return result
 }
 
@@ -84,6 +87,8 @@ export default function EditAgentPage() {
     },
   })
 
+  const { data: toolsList = [], isLoading: isLoadingTools } = useToolsList()
+
   const {
     register,
     handleSubmit,
@@ -100,6 +105,7 @@ export default function EditAgentPage() {
       max_iterations: 10,
       connection_id: "",
       model_ref_id: "",
+      tool_ids: [],
     },
   })
 
@@ -107,6 +113,7 @@ export default function EditAgentPage() {
   useEffect(() => {
     if (agent) {
       const connectionId = agent.model_ref?.connection?.id || ""
+      const toolIds = agent.tools?.map((t) => t.id) ?? []
       reset({
         name: agent.name || "",
         description: agent.description || "",
@@ -116,12 +123,14 @@ export default function EditAgentPage() {
         max_tokens: agent.max_tokens,
         connection_id: connectionId,
         model_ref_id: agent.model_ref_id || "",
+        tool_ids: toolIds,
       })
     }
   }, [agent, reset])
 
   const selectedConnectionId = watch("connection_id")
   const selectedModelRefId = watch("model_ref_id")
+  const selectedToolIds = watch("tool_ids") ?? []
 
   const connectionOptions = (connections || []).map((c) => ({
     value: c.id,
@@ -376,6 +385,53 @@ export default function EditAgentPage() {
               </p>
               {errors.max_tokens && (
                 <p className="text-sm text-destructive">{errors.max_tokens.message}</p>
+              )}
+            </div>
+
+            {/* Tools */}
+            <div className="space-y-2">
+              <Label>Tools</Label>
+              <p className="text-xs text-muted-foreground">
+                Attach tools this agent can use (e.g. RAG search). Create tools from the Tools page.
+              </p>
+              {isLoadingTools ? (
+                <p className="text-sm text-muted-foreground">Loading tools...</p>
+              ) : toolsList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No tools yet. Create tools from the Tools page first.
+                </p>
+              ) : (
+                <div className="rounded-md border p-3 space-y-2 max-h-[200px] overflow-auto">
+                  {toolsList.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className="flex items-start gap-2 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedToolIds.includes(tool.id)}
+                        onChange={() => {
+                          const next = selectedToolIds.includes(tool.id)
+                            ? selectedToolIds.filter((id) => id !== tool.id)
+                            : [...selectedToolIds, tool.id]
+                          setValue("tool_ids", next, { shouldValidate: true })
+                        }}
+                        className="mt-1 h-4 w-4 rounded border-input"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-sm">{tool.name}</span>
+                        <span className="text-xs text-muted-foreground ml-1 capitalize">
+                          ({tool.tool_type})
+                        </span>
+                        {tool.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            {tool.description}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           </CardContent>
