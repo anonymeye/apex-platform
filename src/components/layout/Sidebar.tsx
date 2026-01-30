@@ -7,6 +7,7 @@ import {
   Bot,
   MessageCircle,
   Book,
+  Wrench,
   Plug,
   Database,
   GraduationCap,
@@ -46,6 +47,11 @@ const navigation = [
     name: "Knowledge",
     href: "/knowledge",
     icon: Book,
+  },
+  {
+    name: "Tools",
+    href: "/tools",
+    icon: Wrench,
   },
   {
     name: "Training",
