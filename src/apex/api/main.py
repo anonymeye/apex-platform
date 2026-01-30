@@ -23,7 +23,7 @@ if os.getenv("GROQ_API_KEY"):
 else:
     print("⚠ GROQ_API_KEY not found in environment", flush=True)
 
-from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model_refs
+from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model_refs, tools
 from apex.core.config import settings
 from apex.core.database import close_db
 
@@ -276,6 +276,7 @@ app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(agents.router, prefix="/api/v1")  # Router already has /agents prefix
 app.include_router(connections.router, prefix="/api/v1")
 app.include_router(model_refs.router, prefix="/api/v1")
+app.include_router(tools.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1/agents")  # Chat routes are under /agents
 
 

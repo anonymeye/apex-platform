@@ -19,9 +19,8 @@ from apex.api.v1.schemas.knowledge import (
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     KnowledgeSearchResult,
-    ToolResponse,
-    ToolUpdate,
 )
+from apex.api.v1.schemas.tools import ToolResponse, ToolUpdate
 from fastapi import Request
 from apex.core.database import get_db
 from apex.core.config import settings
