@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
+from apex.interceptors import LLMMessageLoggingInterceptor
 from apex.models.agent import Agent
 from apex.models.connection import Connection
 from apex.repositories.agent_repository import AgentRepository
@@ -177,8 +178,20 @@ class ChatService:
         if agent.max_tokens is not None:
             chat_opts.max_tokens = agent.max_tokens
 
+        # Interceptor to log messages exchanged with the LLM (DEBUG for full exchange)
+        llm_logger = logging.getLogger("apex.services.chat_service.llm")
+        llm_logging_interceptor = LLMMessageLoggingInterceptor(
+            logger=llm_logger,
+            log_level=logging.DEBUG,
+            content_max_len=500,
+        )
+
         # Create agent and invoke
         try:
+            logger.info(
+                "Sending to LLM: %s",
+                user_message[:300] + "..." if len(user_message) > 300 else user_message,
+            )
             async with model:
                 agent_instance = make_agent(
                     model=model,
@@ -186,6 +199,7 @@ class ChatService:
                     system_message=agent.system_message,
                     max_iterations=agent.max_iterations,
                     chat_opts=chat_opts,
+                    interceptors=[llm_logging_interceptor],
                 )
                 result = await agent_instance.ainvoke(user_message)
         except Exception as e:
@@ -194,6 +208,10 @@ class ChatService:
 
         # Extract response content
         response_content = result.response.extract_content()
+        logger.info(
+            "LLM response received: %s",
+            response_content[:300] + "..." if len(response_content) > 300 else response_content,
+        )
 
         # Convert tool calls to response format
         tool_calls_response = None
