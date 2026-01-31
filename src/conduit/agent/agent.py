@@ -50,24 +50,36 @@ class Agent:
         self.chat_opts = chat_opts
         self.interceptors = interceptors
     
-    def _prepare_messages(self, user_message: str) -> list[Message]:
-        """Prepare messages with optional system message."""
+    def _prepare_messages(
+        self,
+        user_message: str,
+        initial_messages: list[Message] | None = None,
+    ) -> list[Message]:
+        """Prepare messages with optional system message and prior conversation history."""
         messages: list[Message] = []
         if self.system_message:
             messages.append(Message(role="system", content=self.system_message))
+        if initial_messages:
+            messages.extend(initial_messages)
         messages.append(Message(role="user", content=user_message))
         return messages
-    
-    async def ainvoke(self, user_message: str) -> AgentResult:
+
+    async def ainvoke(
+        self,
+        user_message: str,
+        initial_messages: list[Message] | None = None,
+    ) -> AgentResult:
         """Invoke agent asynchronously.
-        
+
         Args:
             user_message: User message to process
-            
+            initial_messages: Optional prior conversation messages (user/assistant/tool)
+                             for multi-turn context.
+
         Returns:
             AgentResult with response and metadata
         """
-        messages = self._prepare_messages(user_message)
+        messages = self._prepare_messages(user_message, initial_messages=initial_messages)
         return await tool_loop(
             model=self.model,
             messages=messages,
@@ -77,19 +89,24 @@ class Agent:
             interceptors=self.interceptors,
         )
     
-    def invoke(self, user_message: str) -> AgentResult:
+    def invoke(
+        self,
+        user_message: str,
+        initial_messages: list[Message] | None = None,
+    ) -> AgentResult:
         """Invoke agent synchronously.
-        
+
         Args:
             user_message: User message to process
-            
+            initial_messages: Optional prior conversation messages for multi-turn context.
+
         Returns:
             AgentResult with response and metadata
-            
+
         Raises:
             RuntimeError: If called from async context (use ainvoke instead)
         """
-        return run_sync(self.ainvoke(user_message))
+        return run_sync(self.ainvoke(user_message, initial_messages=initial_messages))
 
 
 def make_agent(
