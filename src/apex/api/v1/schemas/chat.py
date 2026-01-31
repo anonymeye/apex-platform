@@ -45,3 +45,21 @@ class ChatResponse(BaseModel):
     # Additional metadata
     iterations: int
     usage: Optional[UsageResponse] = None
+
+
+class ConversationStateMetadataResponse(BaseModel):
+    """Metadata for conversation state (Redis debug)."""
+
+    conversation_id: str
+    user_id: str
+    agent_id: str
+    created_at: str
+    last_activity_at: str
+    message_count: int
+
+
+class ConversationStateResponse(BaseModel):
+    """Conversation state as stored in Redis (for debug panel)."""
+
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: ConversationStateMetadataResponse

@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apex.api.dependencies import get_current_user_from_token
-from apex.api.v1.schemas.chat import ChatRequest, ChatResponse
+from apex.api.v1.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    ConversationStateMetadataResponse,
+    ConversationStateResponse,
+)
 from apex.core.config import settings
 from apex.core.database import get_db
 from apex.repositories.agent_repository import AgentRepository
@@ -139,6 +144,36 @@ async def chat_with_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat execution failed: {str(e)}",
         )
+
+
+@router.get(
+    "/{agent_id}/conversations/{conversation_id}/state",
+    response_model=ConversationStateResponse,
+)
+async def get_conversation_state(
+    agent_id: UUID,
+    conversation_id: UUID,
+    request: Request,
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Return conversation state from Redis for the current user (debug panel)."""
+    user_id = UUID(user_data.get("sub"))
+    store = get_conversation_state_store(request)
+    if not store:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversation state store (Redis) unavailable",
+        )
+    state = await store.get(user_id, conversation_id)
+    if state is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation state not found or expired",
+        )
+    return ConversationStateResponse(
+        messages=state.messages,
+        metadata=ConversationStateMetadataResponse(**state.metadata.__dict__),
+    )
 
 
 @router.delete("/{agent_id}/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
