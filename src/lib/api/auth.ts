@@ -65,4 +65,12 @@ export const authApi = {
     const response = await apiClient.post<{ access_token: string }>("/auth/refresh")
     return response.data
   },
+
+  /**
+   * Logout: clear conversation state on the backend (Redis) for the current user.
+   * Call before clearing local token so the backend can identify the user.
+   */
+  logout: async (): Promise<void> => {
+    await apiClient.post("/auth/logout")
+  },
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useAgentStore } from "@/lib/store/agentStore"
-import { useAuthStore } from "@/lib/store/authStore"
+import { useAuth } from "@/lib/hooks/useAuth"
 import { LogOut, User } from "lucide-react"
 import {
   DropdownMenu,
@@ -16,11 +16,11 @@ import { useRouter } from "next/navigation"
 
 export function Header() {
   const router = useRouter()
-  const { user, clearAuth } = useAuthStore()
+  const { user, logout } = useAuth()
   const { selectedAgent } = useAgentStore()
 
-  const handleLogout = () => {
-    clearAuth()
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
   }
 

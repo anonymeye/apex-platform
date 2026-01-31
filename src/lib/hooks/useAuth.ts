@@ -32,7 +32,12 @@ export function useAuth() {
     [setAuth]
   )
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      // Ignore: still clear local auth so user is not stuck
+    }
     clearAuth()
   }, [clearAuth])
 

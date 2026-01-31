@@ -39,6 +39,7 @@ export default function TestAgentPage() {
   const { selectedAgentId, selectedAgent, setSelectedAgent } = useAgentStore()
   const [resolvedAgent, setResolvedAgent] = React.useState<Agent | null>(selectedAgent)
   const [messages, setMessages] = React.useState<ChatMessage[]>([])
+  const [conversationId, setConversationId] = React.useState<string | null>(null)
   const [input, setInput] = React.useState("")
   const [isSending, setIsSending] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -47,6 +48,12 @@ export default function TestAgentPage() {
   React.useEffect(() => {
     setResolvedAgent(selectedAgent)
   }, [selectedAgent])
+
+  // New agent = new conversation (clear state so backend history is not mixed)
+  React.useEffect(() => {
+    setConversationId(null)
+    setMessages([])
+  }, [selectedAgentId])
 
   React.useEffect(() => {
     let cancelled = false
@@ -99,8 +106,16 @@ export default function TestAgentPage() {
     )
   }
 
-  const handleClear = () => {
+  const handleClear = async () => {
+    if (agent && conversationId) {
+      try {
+        await chatApi.clearConversation(agent.id, conversationId)
+      } catch {
+        // Still clear UI; backend state may expire via TTL
+      }
+    }
     setMessages([])
+    setConversationId(null)
     setInput("")
     setIsSending(false)
   }
@@ -109,6 +124,9 @@ export default function TestAgentPage() {
     const content = input.trim()
     if (!content) return
     if (isSending) return
+
+    const currentConversationId = conversationId ?? makeId()
+    if (!conversationId) setConversationId(currentConversationId)
 
     const userMsg: ChatMessage = {
       id: makeId(),
@@ -122,7 +140,7 @@ export default function TestAgentPage() {
     setIsSending(true)
 
     try {
-      const res = await chatApi.sendMessage(agent.id, content)
+      const res = await chatApi.sendMessage(agent.id, content, currentConversationId)
       const data = res.data as {
         id: string
         role: "assistant"
@@ -177,7 +195,11 @@ export default function TestAgentPage() {
             Tools: <span className="font-medium">{agent.tools?.length ?? 0}</span>
           </p>
         </div>
-        <Button variant="outline" onClick={handleClear} disabled={isSending && messages.length === 0}>
+        <Button
+          variant="outline"
+          onClick={() => void handleClear()}
+          disabled={isSending && messages.length === 0}
+        >
           Clear chat
         </Button>
       </div>
