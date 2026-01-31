@@ -16,6 +16,7 @@ from apex.services.chat_service import ChatService
 from apex.services.rag_tool_service import RAGToolService
 from apex.ml.rag.embeddings import EmbeddingService
 from apex.storage.vector_store import ApexVectorStore
+from apex.storage.conversation_state_store import ConversationStateStore
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,16 @@ def get_embedding_service(request: Request) -> EmbeddingService:
     return _embedding_service
 
 
+def get_conversation_state_store(request: Request) -> ConversationStateStore | None:
+    """Get conversation state store from app state (Redis). Returns None if Redis unavailable."""
+    if hasattr(request.app.state, "redis") and request.app.state.redis:
+        return ConversationStateStore(
+            redis=request.app.state.redis,
+            ttl_seconds=settings.conversation_state_ttl_seconds,
+        )
+    return None
+
+
 def get_chat_service(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -63,6 +74,7 @@ def get_chat_service(
     """Get chat service instance."""
     vector_store = get_vector_store(request)
     embedding_service = get_embedding_service(request)
+    conversation_state_store = get_conversation_state_store(request)
 
     rag_tool_service = RAGToolService(
         tool_repository=ToolRepository(db),
@@ -70,12 +82,13 @@ def get_chat_service(
         embedding_service=embedding_service,
         chat_model=None,
     )
-    
+
     return ChatService(
         agent_repo=AgentRepository(db),
         tool_repo=ToolRepository(db),
         agent_tool_repo=AgentToolRepository(db),
         rag_tool_service=rag_tool_service,
+        conversation_state_store=conversation_state_store,
     )
 
 
@@ -103,12 +116,14 @@ async def chat_with_agent(
         HTTPException: If agent not found, unauthorized, or execution fails
     """
     organization_id = UUID(user_data.get("org_id"))
+    user_id = UUID(user_data.get("sub"))
 
     try:
         response = await chat_service.chat(
             agent_id=agent_id,
             user_message=chat_request.message,
             organization_id=organization_id,
+            user_id=user_id,
             conversation_id=chat_request.conversation_id,
         )
         return ChatResponse(**response)
@@ -124,3 +139,19 @@ async def chat_with_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat execution failed: {str(e)}",
         )
+
+
+@router.delete("/{agent_id}/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_conversation(
+    agent_id: UUID,
+    conversation_id: UUID,
+    request: Request,
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Clear conversation state for the current user (messages + metadata). Called when user clears chat."""
+    user_id = UUID(user_data.get("sub"))
+    store = get_conversation_state_store(request)
+    if not store:
+        # Redis unavailable; no state to clear
+        return
+    await store.delete(user_id, conversation_id)

@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_batch_size: int = 32
 
+    # Redis (conversation state: messages + metadata, TTL 1 day)
+    redis_url: str = "redis://localhost:6379/0"
+    conversation_state_ttl_seconds: int = 86400  # 1 day
+
     # Vector store: "pgvector" (persistent, same DB) or "memory" (in-memory, dev only)
     vector_store_type: str = "pgvector"
     # Embedding dimension must match the model (e.g. all-MiniLM-L6-v2 = 384)

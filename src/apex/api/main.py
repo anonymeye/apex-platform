@@ -27,6 +27,7 @@ from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model
 from apex.core.config import settings
 from apex.core.database import close_db
 from apex.utils.logging import setup_logging
+from redis.asyncio import Redis
 
 # Configure logging so DEBUG/INFO etc. are visible (e.g. LOG_LEVEL=DEBUG in Docker)
 setup_logging(debug=settings.debug, log_level=settings.log_level)
@@ -68,7 +69,7 @@ async def lifespan(app: FastAPI):
         # Store in app state for access by routes
         app.state.embedding_service = embedding_service
         app.state.vector_store = vector_store
-        
+
         print(f"✓ Embedding model '{settings.embedding_model}' loaded successfully", flush=True)
         logger.info(f"Embedding model '{settings.embedding_model}' preloaded successfully")
     except Exception as e:
@@ -77,10 +78,27 @@ async def lifespan(app: FastAPI):
         # Don't fail startup - allow lazy loading as fallback
         app.state.embedding_service = None
         app.state.vector_store = None
-    
+
+    # Redis for conversation state
+    try:
+        redis_client = Redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+        app.state.redis = redis_client
+        print("✓ Redis connected for conversation state", flush=True)
+        logger.info("Redis connected for conversation state")
+    except Exception as e:
+        print(f"⚠ Redis connection failed: {e}", flush=True)
+        logger.error("Redis connection failed: %s", e, exc_info=True)
+        app.state.redis = None
+
     # Database schema is managed by Alembic migrations (run in Dockerfile before startup)
     yield
     # Shutdown
+    if hasattr(app.state, "redis") and app.state.redis:
+        await app.state.redis.aclose()
     await close_db()
 
 

@@ -3,20 +3,26 @@
 import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from apex.interceptors import LLMMessageLoggingInterceptor
-from apex.models.agent import Agent
 from apex.models.connection import Connection
 from apex.repositories.agent_repository import AgentRepository
 from apex.repositories.tool_repository import AgentToolRepository, ToolRepository
 from apex.services.rag_tool_service import RAGToolService
+from apex.storage.conversation_state import (
+    ConversationState,
+    ConversationStateMetadata,
+)
+from apex.storage.conversation_state_store import ConversationStateStore
 from conduit.agent import make_agent
 from conduit.providers.anthropic import AnthropicModel
 from conduit.providers.groq import GroqModel
 from conduit.providers.openai import OpenAIModel
+from conduit.schema.messages import Message as ConduitMessage
 from conduit.schema.options import ChatOptions
+from conduit.schema.responses import ToolCall as ConduitToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +36,7 @@ class ChatService:
         tool_repo: ToolRepository,
         agent_tool_repo: AgentToolRepository,
         rag_tool_service: RAGToolService,
+        conversation_state_store: ConversationStateStore | None = None,
     ):
         """Initialize chat service.
 
@@ -38,11 +45,13 @@ class ChatService:
             tool_repo: Tool repository
             agent_tool_repo: AgentTool repository
             rag_tool_service: RAG tool service for creating conduit tools
+            conversation_state_store: Optional Redis store for conversation state (messages + metadata)
         """
         self.agent_repo = agent_repo
         self.tool_repo = tool_repo
         self.agent_tool_repo = agent_tool_repo
         self.rag_tool_service = rag_tool_service
+        self.conversation_state_store = conversation_state_store
 
     def _resolve_api_key(self, connection: Connection) -> str | None:
         """Resolve API key for a connection.
@@ -111,11 +120,53 @@ class ChatService:
 
         raise ValueError(f"Unsupported connection provider: {connection.provider}")
 
+    @staticmethod
+    def _stored_messages_to_conduit(messages: list[dict[str, Any]]) -> list[ConduitMessage]:
+        """Convert stored message dicts to conduit Message list."""
+        out: list[ConduitMessage] = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if isinstance(content, list):
+                content = content  # Conduit allows list (content blocks)
+            tool_calls_raw = m.get("tool_calls")
+            tool_calls = (
+                [ConduitToolCall(**tc) for tc in tool_calls_raw]
+                if isinstance(tool_calls_raw, list) and tool_calls_raw
+                else None
+            )
+            out.append(
+                ConduitMessage(
+                    role=role,
+                    content=content,
+                    name=m.get("name"),
+                    tool_call_id=m.get("tool_call_id"),
+                    tool_calls=tool_calls,
+                )
+            )
+        return out
+
+    @staticmethod
+    def _conduit_message_to_stored(msg: ConduitMessage) -> dict[str, Any]:
+        """Convert conduit Message to stored dict (JSON-serializable)."""
+        d: dict[str, Any] = {"role": msg.role, "content": msg.content}
+        if msg.name is not None:
+            d["name"] = msg.name
+        if msg.tool_call_id is not None:
+            d["tool_call_id"] = msg.tool_call_id
+        if msg.tool_calls is not None:
+            d["tool_calls"] = [
+                tc.model_dump() if hasattr(tc, "model_dump") else tc
+                for tc in msg.tool_calls
+            ]
+        return d
+
     async def chat(
         self,
         agent_id: UUID,
         user_message: str,
         organization_id: UUID,
+        user_id: UUID,
         conversation_id: Optional[UUID] = None,
     ):
         """Chat with an agent.
@@ -124,6 +175,7 @@ class ChatService:
             agent_id: Agent ID
             user_message: User message
             organization_id: Organization ID (for authorization)
+            user_id: Current user ID (for conversation state)
             conversation_id: Optional conversation ID for continuing a conversation
 
         Returns:
@@ -132,6 +184,14 @@ class ChatService:
         Raises:
             ValueError: If agent not found, unauthorized, or model creation fails
         """
+        # Load conversation state when continuing a conversation
+        state: ConversationState | None = None
+        initial_messages: list[ConduitMessage] = []
+        if conversation_id and self.conversation_state_store:
+            state = await self.conversation_state_store.get(user_id, conversation_id)
+            if state and state.messages:
+                initial_messages = self._stored_messages_to_conduit(state.messages)
+
         # Get agent with tools
         agent = await self.agent_repo.get_with_tools(agent_id)
         if not agent:
@@ -201,7 +261,10 @@ class ChatService:
                     chat_opts=chat_opts,
                     interceptors=[llm_logging_interceptor],
                 )
-                result = await agent_instance.ainvoke(user_message)
+                result = await agent_instance.ainvoke(
+                    user_message,
+                    initial_messages=initial_messages if initial_messages else None,
+                )
         except Exception as e:
             logger.error(f"Agent invocation failed: {e}")
             raise ValueError(f"Agent execution failed: {str(e)}")
@@ -240,6 +303,33 @@ class ChatService:
         # Generate message ID and timestamp
         message_id = str(uuid4())
         timestamp = datetime.utcnow().isoformat() + "Z"
+
+        # Persist conversation state when conversation_id and store are present
+        if conversation_id and self.conversation_state_store:
+            now = datetime.utcnow().isoformat() + "Z"
+            # New messages from this turn: new user message + assistant/tool messages from result
+            num_prior = len(initial_messages)
+            new_from_result = result.messages[(num_prior + 2) :]  # skip system, prior, new user
+            new_user_dict = {"role": "user", "content": user_message}
+            new_stored = [new_user_dict] + [
+                self._conduit_message_to_stored(m) for m in new_from_result
+            ]
+            if state is None:
+                state = ConversationState(
+                    messages=[],
+                    metadata=ConversationStateMetadata(
+                        conversation_id=str(conversation_id),
+                        user_id=str(user_id),
+                        agent_id=str(agent_id),
+                        created_at=now,
+                        last_activity_at=now,
+                        message_count=0,
+                    ),
+                )
+            state.messages.extend(new_stored)
+            state.metadata.last_activity_at = now
+            state.metadata.message_count = len(state.messages)
+            await self.conversation_state_store.set(user_id, conversation_id, state)
 
         return {
             "id": message_id,

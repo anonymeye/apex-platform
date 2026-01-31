@@ -3,7 +3,7 @@
 from typing import List
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -272,6 +272,24 @@ async def get_current_user_info(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="User has no active organization memberships",
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Clear conversation state for the current user (e.g. on logout)."""
+    from apex.core.config import settings
+    from apex.storage.conversation_state_store import ConversationStateStore
+
+    if hasattr(request.app.state, "redis") and request.app.state.redis:
+        store = ConversationStateStore(
+            redis=request.app.state.redis,
+            ttl_seconds=settings.conversation_state_ttl_seconds,
+        )
+        await store.delete_all_for_user(current_user.id)
+    return None
 
 
 @router.post("/switch-org", response_model=TokenResponse)
