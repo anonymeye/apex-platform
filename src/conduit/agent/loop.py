@@ -138,11 +138,13 @@ async def tool_loop(
                 on_tool_call(tool_call)
             all_tool_calls.append(tool_call)
 
-        # Add assistant message with content (tool calls are in response)
+        # Add assistant message with content and tool_calls (required for valid replay)
         content = (
             response.content if isinstance(response.content, str) else response.extract_content()
         )
-        current_messages.append(Message(role="assistant", content=content))
+        current_messages.append(
+            Message(role="assistant", content=content, tool_calls=response.tool_calls)
+        )
 
         # Execute tools and add results
         tool_results = await execute_tool_calls(tools, response.tool_calls)

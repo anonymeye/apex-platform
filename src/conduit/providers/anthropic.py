@@ -253,8 +253,37 @@ class AnthropicModel(ChatModel):
         """Transform Conduit message to Anthropic format."""
         result: dict[str, Any] = {"role": msg.role}
 
-        # Anthropic uses content as array of blocks
-        if isinstance(msg.content, str):
+        # Assistant with tool_calls: content must be array of blocks (text + tool_use)
+        if getattr(msg, "tool_calls", None) and msg.role == "assistant":
+            content_str = (
+                msg.content
+                if isinstance(msg.content, str)
+                else str(msg.content)
+            )
+            content_parts: list[dict[str, Any]] = [{"type": "text", "text": content_str or ""}]
+            for tc in msg.tool_calls:
+                if isinstance(tc, dict):
+                    content_parts.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["function"]["name"],
+                            "input": tc["function"].get("arguments", {}),
+                        }
+                    )
+                else:
+                    args = tc.function.arguments
+                    content_parts.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.function.name,
+                            "input": args if isinstance(args, dict) else {},
+                        }
+                    )
+            result["content"] = content_parts
+        # Anthropic uses content as array of blocks when no tool_calls
+        elif isinstance(msg.content, str):
             result["content"] = msg.content
         elif isinstance(msg.content, list):
             # Transform content blocks

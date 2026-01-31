@@ -267,6 +267,24 @@ class OpenAIModel(ChatModel):
             result["name"] = msg.name
         if msg.tool_call_id:
             result["tool_call_id"] = msg.tool_call_id
+        if getattr(msg, "tool_calls", None):
+            result["tool_calls"] = [
+                {
+                    "id": tc["id"] if isinstance(tc, dict) else tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc["function"]["name"] if isinstance(tc, dict) else tc.function.name,
+                        "arguments": json.dumps(tc["function"]["arguments"])
+                        if isinstance(tc, dict)
+                        else (
+                            json.dumps(tc.function.arguments)
+                            if isinstance(tc.function.arguments, dict)
+                            else tc.function.arguments
+                        ),
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
 
         return result
 

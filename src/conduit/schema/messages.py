@@ -1,6 +1,6 @@
 """Message schemas for Conduit."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,7 @@ class Message(BaseModel):
     content: str | list[ContentBlock]
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls: list[Any] | None = None  # ToolCall when role=assistant (for replay)
 
     model_config = {
         "json_schema_extra": {
