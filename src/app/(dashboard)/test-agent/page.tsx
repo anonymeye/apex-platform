@@ -9,6 +9,7 @@ import type { Message as ChatMessageBase, ToolCall } from "@/lib/types/chat"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { ConversationStateDebugPanel } from "@/components/chat/ConversationStateDebugPanel"
 import { Bot } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils/cn"
@@ -195,13 +196,19 @@ export default function TestAgentPage() {
             Tools: <span className="font-medium">{agent.tools?.length ?? 0}</span>
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => void handleClear()}
-          disabled={isSending && messages.length === 0}
-        >
-          Clear chat
-        </Button>
+        <div className="flex items-center gap-2">
+          <ConversationStateDebugPanel
+            agentId={agent.id}
+            conversationId={conversationId}
+          />
+          <Button
+            variant="outline"
+            onClick={() => void handleClear()}
+            disabled={isSending && messages.length === 0}
+          >
+            Clear chat
+          </Button>
+        </div>
       </div>
 
       <Card className="flex flex-col">
@@ -233,7 +240,20 @@ export default function TestAgentPage() {
                           : "bg-muted text-foreground"
                     )}
                   >
-                    <div>{m.content}</div>
+                    <div>
+                      {m.role === "assistant" &&
+                      !m.content?.trim() &&
+                      m.tool_calls?.length
+                        ? (() => {
+                            const toolNames = m.tool_calls.map((tc) => tc.name).join(", ")
+                            return (
+                              <span className="italic text-muted-foreground">
+                                Looking up… ({toolNames})
+                              </span>
+                            )
+                          })()
+                        : m.content}
+                    </div>
                     <div className="mt-2 text-[11px] opacity-70">
                       {new Date(m.timestamp).toLocaleTimeString()}
                       {m.role === "assistant" && typeof m.iterations === "number" && (
