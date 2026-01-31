@@ -26,6 +26,10 @@ else:
 from apex.api.v1.routes import agents, auth, chat, connections, knowledge, model_refs, tools
 from apex.core.config import settings
 from apex.core.database import close_db
+from apex.utils.logging import setup_logging
+
+# Configure logging so DEBUG/INFO etc. are visible (e.g. LOG_LEVEL=DEBUG in Docker)
+setup_logging(debug=settings.debug, log_level=settings.log_level)
 
 # Get loggers
 logger = logging.getLogger("uvicorn.error")

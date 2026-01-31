@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Apex API"
     debug: bool = False
+    # Log level: DEBUG, INFO, WARNING, ERROR (set LOG_LEVEL=DEBUG in Docker to see all logs)
+    log_level: str = "INFO"
     
     # Embedding configuration
     embedding_model: str = "all-MiniLM-L6-v2"

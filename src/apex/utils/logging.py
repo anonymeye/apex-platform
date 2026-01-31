@@ -4,41 +4,45 @@ import logging
 import sys
 
 
-def setup_logging(debug: bool = False) -> None:
+def setup_logging(
+    debug: bool = False,
+    log_level: str | None = None,
+) -> None:
     """Configure application logging.
-    
+
+    Called at app startup so all log levels (including DEBUG) are visible
+    when DEBUG=true or LOG_LEVEL=DEBUG (e.g. in Docker).
+
     Args:
-        debug: If True, set log level to DEBUG, otherwise INFO
+        debug: If True, set log level to DEBUG (overrides log_level).
+        log_level: Level name: DEBUG, INFO, WARNING, ERROR. Used when debug is False.
     """
-    log_level = logging.DEBUG if debug else logging.INFO
-    
-    # Get the root logger
+    if debug:
+        level = logging.DEBUG
+    elif log_level:
+        level = getattr(logging, log_level.upper(), logging.INFO)
+    else:
+        level = logging.INFO
+
     root_logger = logging.getLogger()
-    
-    # Remove existing handlers to avoid duplicates
     root_logger.handlers.clear()
-    
-    # Create a handler that outputs to stdout
+
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(log_level)
-    
-    # Create formatter
+    handler.setLevel(level)
+
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     handler.setFormatter(formatter)
-    
-    # Configure root logger
-    root_logger.setLevel(log_level)
+
+    root_logger.setLevel(level)
     root_logger.addHandler(handler)
-    
-    # Set specific loggers
-    logging.getLogger("uvicorn").setLevel(log_level)
+
+    logging.getLogger("uvicorn").setLevel(level)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-    logging.getLogger("fastapi").setLevel(log_level)
-    logging.getLogger("apex").setLevel(log_level)  # Our application logger
-    
-    # Reduce noise from third-party libraries
+    logging.getLogger("fastapi").setLevel(level)
+    logging.getLogger("apex").setLevel(level)
+
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
