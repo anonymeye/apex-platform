@@ -1,5 +1,6 @@
 """Tool definition for function calling."""
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -36,8 +37,8 @@ class Tool(BaseModel):
         >>> # Convert to JSON Schema for API
         >>> schema = tool.to_json_schema()
         >>>
-        >>> # Execute with validated arguments
-        >>> result = tool.execute({"location": "Tokyo", "unit": "celsius"})
+        >>> # Execute with validated arguments (use await in async context)
+        >>> result = await tool.execute({"location": "Tokyo", "unit": "celsius"})
     """
 
     name: str = Field(
@@ -51,8 +52,11 @@ class Tool(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
 
-    def execute(self, arguments: dict[str, Any]) -> Any:
+    async def execute(self, arguments: dict[str, Any]) -> Any:
         """Execute tool with arguments.
+
+        Supports both sync and async tool functions. If fn returns a coroutine,
+        it is awaited; otherwise the value is returned as-is.
 
         Args:
             arguments: Raw arguments dict from LLM
@@ -65,8 +69,7 @@ class Tool(BaseModel):
             ToolExecutionError: If tool execution fails
 
         Examples:
-            >>> tool.execute({"location": "Tokyo"})
-            {"temp": 72, "condition": "sunny"}
+            >>> result = await tool.execute({"location": "Tokyo"})
         """
         # Validate and parse arguments
         try:
@@ -74,9 +77,12 @@ class Tool(BaseModel):
         except ValidationError as e:
             raise ConduitValidationError(f"Invalid arguments for tool '{self.name}': {e}") from e
 
-        # Execute function
+        # Execute function (sync or async)
         try:
-            return self.fn(params)
+            raw = self.fn(params)
+            if asyncio.iscoroutine(raw):
+                return await raw
+            return raw
         except Exception as e:
             raise ToolExecutionError(
                 f"Error executing tool '{self.name}': {str(e)}", tool_name=self.name

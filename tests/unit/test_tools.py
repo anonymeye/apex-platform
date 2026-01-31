@@ -71,7 +71,8 @@ def test_tool_name_validation():
         Tool(name="invalid@name", description="Test", parameters=WeatherParams, fn=get_weather)
 
 
-def test_tool_execute_success():
+@pytest.mark.asyncio
+async def test_tool_execute_success():
     """Test successful tool execution."""
     tool = Tool(
         name="get_weather",
@@ -80,11 +81,12 @@ def test_tool_execute_success():
         fn=get_weather
     )
     
-    result = tool.execute({"location": "Tokyo", "unit": "celsius"})
+    result = await tool.execute({"location": "Tokyo", "unit": "celsius"})
     assert result == {"temp": 72, "condition": "sunny", "location": "Tokyo", "unit": "celsius"}
 
 
-def test_tool_execute_with_defaults():
+@pytest.mark.asyncio
+async def test_tool_execute_with_defaults():
     """Test tool execution with default parameters."""
     tool = Tool(
         name="get_weather",
@@ -93,11 +95,12 @@ def test_tool_execute_with_defaults():
         fn=get_weather
     )
     
-    result = tool.execute({"location": "Tokyo"})  # unit defaults to "celsius"
+    result = await tool.execute({"location": "Tokyo"})  # unit defaults to "celsius"
     assert result["unit"] == "celsius"
 
 
-def test_tool_execute_validation_error():
+@pytest.mark.asyncio
+async def test_tool_execute_validation_error():
     """Test tool execution with invalid arguments."""
     tool = Tool(
         name="get_weather",
@@ -107,13 +110,14 @@ def test_tool_execute_validation_error():
     )
     
     with pytest.raises(ConduitValidationError):
-        tool.execute({"location": "Tokyo", "unit": "invalid"})
+        await tool.execute({"location": "Tokyo", "unit": "invalid"})
     
     with pytest.raises(ConduitValidationError):
-        tool.execute({"location": 123})  # Wrong type
+        await tool.execute({"location": 123})  # Wrong type
 
 
-def test_tool_execute_function_error():
+@pytest.mark.asyncio
+async def test_tool_execute_function_error():
     """Test tool execution when function raises error."""
     def failing_function(params: CalculatorParams) -> float:
         return params.a / params.b  # Will fail if b == 0
@@ -126,7 +130,7 @@ def test_tool_execute_function_error():
     )
     
     with pytest.raises(ToolExecutionError) as exc_info:
-        tool.execute({"a": 10, "b": 0, "operation": "divide"})
+        await tool.execute({"a": 10, "b": 0, "operation": "divide"})
     assert "divide" in str(exc_info.value)
     assert exc_info.value.tool_name == "divide"
 

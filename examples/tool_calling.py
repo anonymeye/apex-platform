@@ -82,7 +82,7 @@ async def main() -> None:
             for tool_call in response.tool_calls:
                 print(f"  - {tool_call.function.name}({tool_call.function.arguments})")
                 # Execute tool
-                result = weather_tool.execute(tool_call.function.arguments)
+                result = await weather_tool.execute(tool_call.function.arguments)
                 print(f"Tool result: {result}")
         print("(Using mock model - set OPENAI_API_KEY for real API)")
 

@@ -65,7 +65,7 @@ async def execute_tool_calls(
 
         # Execute tool
         try:
-            result = tool.execute(call.function.arguments)
+            result = await tool.execute(call.function.arguments)
             # Convert result to string if needed
             if isinstance(result, str):
                 content = result
