@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from conduit.rag import Document, VectorRetriever
+from conduit.rag import Document, RetrievalResult, VectorRetriever
 
 from apex.storage.vector_store import ApexVectorStore
 
@@ -36,7 +36,7 @@ class KnowledgeBaseRetriever(VectorRetriever):
 
     async def retrieve(
         self, query: str, k: int = 5
-    ) -> list[tuple[Document, float]]:
+    ) -> list[RetrievalResult]:
         """Retrieve documents for a query.
 
         Args:
@@ -44,14 +44,17 @@ class KnowledgeBaseRetriever(VectorRetriever):
             k: Number of documents to retrieve
 
         Returns:
-            List of (document, score) tuples
+            List of RetrievalResult (document, score) for conduit RAGChain.
         """
         # Generate query embedding
         query_embedding = await self.embedding_model.embed_query(query)
 
         # Search with knowledge base filter
-        results = await self.apex_store.search_with_score(
+        raw_results = await self.apex_store.search_with_score(
             query_embedding, k=k, knowledge_base_id=self.knowledge_base_id
         )
 
-        return results
+        return [
+            RetrievalResult(document=doc, score=score)
+            for doc, score in raw_results
+        ]
