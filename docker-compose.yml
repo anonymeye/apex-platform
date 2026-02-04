@@ -1,0 +1,135 @@
+services:
+  # Redis (conversation state: messages + metadata, TTL 1 day)
+  redis:
+    image: redis:7-alpine
+    container_name: apex_redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - apex_network
+
+  # PostgreSQL Database (pgvector image for vector similarity search)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: apex_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-apex_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - apex_network
+
+  # Apex Backend API
+  apex:
+    build:
+      context: .
+      dockerfile: apex/Dockerfile
+    container_name: apex_backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-apex_db}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      APP_NAME: ${APP_NAME:-Apex API}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Migration control: Set to false in production to run migrations manually
+      RUN_MIGRATIONS_ON_STARTUP: ${RUN_MIGRATIONS_ON_STARTUP:-true}
+      # LLM provider credentials (set these in your local .env or shell)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Optional: HuggingFace token for higher rate limits / faster downloads
+      HF_TOKEN: ${HF_TOKEN:-}
+      # Embedding model configuration
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-32}
+      # Redis (conversation state)
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CONVERSATION_STATE_TTL_SECONDS: ${CONVERSATION_STATE_TTL_SECONDS:-86400}
+    ports:
+      - "${APEX_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount source code for hot-reload development
+      - ./apex:/app
+      - ./conduit:/conduit
+      # Exclude node_modules and other build artifacts from being overwritten
+      - /app/__pycache__
+      # Mount HuggingFace cache to persist downloaded models
+      - huggingface_cache:/root/.cache/huggingface
+    networks:
+      - apex_network
+    restart: unless-stopped
+    # Run migrations and start server with hot-reload enabled
+    # Add conduit source to PYTHONPATH for development (volume mount)
+    # Wait for postgres to be ready, then conditionally run migrations and start server
+    # Migration control: Set RUN_MIGRATIONS_ON_STARTUP=false in production to run migrations manually
+    command: sh -c "export PYTHONPATH=/conduit/src:$$PYTHONPATH && until pg_isready -h postgres -U postgres; do echo 'Waiting for postgres...'; sleep 2; done && echo 'Postgres is ready!' && sleep 2 && if [ \"$${RUN_MIGRATIONS_ON_STARTUP:-true}\" = \"true\" ]; then echo 'Running migrations...' && alembic upgrade head; else echo 'Skipping migrations (RUN_MIGRATIONS_ON_STARTUP=false)'; fi && poetry run uvicorn apex.api.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Portal Frontend
+  portal:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile.dev
+    container_name: apex_portal
+    environment:
+      # Use service name for internal Docker network, localhost for browser access
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
+      NODE_ENV: development
+    ports:
+      - "${PORTAL_PORT:-3000}:3000"
+    depends_on:
+      - apex
+    volumes:
+      # Mount source code for hot-reload development
+      - ./portal:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - apex_network
+    restart: unless-stopped
+    # Override command to run dev server
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  apex_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  huggingface_cache:
