@@ -13,6 +13,13 @@ from apex.models.user import Organization, OrganizationMember, User  # noqa: F40
 from apex.models.knowledge import Document, KnowledgeBase  # noqa: F401
 from apex.models.tool import AgentTool, Tool  # noqa: F401
 from apex.models.agent import Agent  # noqa: F401
+from apex.models.connection import Connection  # noqa: F401
+from apex.models.evaluation import (  # noqa: F401
+    EvaluationJudgeConfig,
+    EvaluationRun,
+    EvaluationScore,
+)
+from apex.models.model_ref import ModelRef  # noqa: F401
 from apex.core.config import settings
 
 # this is the Alembic Config object, which provides
