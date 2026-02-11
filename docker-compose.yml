@@ -93,6 +93,40 @@ services:
       retries: 3
       start_period: 40s
 
+  # Evaluation worker (same image as API, consumes Redis queue, runs judge, writes scores)
+  apex-eval-worker:
+    build:
+      context: .
+      dockerfile: apex/Dockerfile
+    container_name: apex_eval_worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-apex_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CONVERSATION_STATE_TTL_SECONDS: ${CONVERSATION_STATE_TTL_SECONDS:-86400}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Judge config (same as API)
+      JUDGE_MODEL: ${JUDGE_MODEL:-gpt-4o-mini}
+      JUDGE_PROVIDER: ${JUDGE_PROVIDER:-openai}
+      JUDGE_API_KEY_ENV_VAR: ${JUDGE_API_KEY_ENV_VAR:-OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apex:/app
+      - ./conduit:/conduit
+      - /app/__pycache__
+      - huggingface_cache:/root/.cache/huggingface
+    networks:
+      - apex_network
+    restart: unless-stopped
+    command: sh -c "export PYTHONPATH=/app/src:/conduit/src:$$PYTHONPATH && python -m apex.worker"
+
   # Portal Frontend
   portal:
     build:
