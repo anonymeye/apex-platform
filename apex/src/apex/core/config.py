@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     conversation_state_ttl_seconds: int = 86400  # 1 day
 
-    # Evaluation: LLM judge (different model than agent, e.g. GPT-4o-mini)
-    judge_model: str = "gpt-4o-mini"
-    judge_provider: str = "openai"
-    judge_api_key_env_var: str = "OPENAI_API_KEY"
+    # Evaluation: LLM judge (no defaults; explicit judge_config_id or inline_judge_config required)
+    judge_model: str = ""
+    judge_provider: str = ""
+    judge_api_key_env_var: str = ""
 
     # Vector store: "pgvector" (persistent, same DB) or "memory" (in-memory, dev only)
     vector_store_type: str = "pgvector"

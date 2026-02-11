@@ -19,7 +19,7 @@ class InlineJudgeConfig(BaseModel):
     )
     model_ref_id: Optional[UUID] = Field(
         None,
-        description="Model reference for judge LLM; if omitted, app default judge model is used",
+        description="Model reference for judge LLM; required when using inline_judge_config",
     )
 
 

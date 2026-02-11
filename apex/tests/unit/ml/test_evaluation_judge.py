@@ -66,10 +66,10 @@ def test_judge_config_from_snapshot():
 
 
 def test_judge_config_from_settings():
+    """from_settings reads env; with no JUDGE_* defaults, model/provider may be empty."""
     config = JudgeConfig.from_settings()
-    assert config.model
-    assert config.provider in ("openai", "anthropic", "groq")
     assert config.prompt_template == DEFAULT_JUDGE_PROMPT_TEMPLATE
+    # Evaluation API no longer uses default judge; from_settings is fallback-only
 
 
 @pytest.mark.asyncio

@@ -29,7 +29,7 @@ This document outlines the implementation plan for the Apex evaluation module: L
 | **1.5** | **Queue + worker** ✅ | Redis as job queue. API: enqueue job (payload: run_id, scope, judge_config_ref). Worker process: same image as API, command runs a loop that BLPOPs (or similar), loads run, calls evaluation service for that run’s scope, updates run status and writes scores. Worker has same env (DB, Redis, judge API keys). |
 | **1.6** | **Docker** ✅ | Add `apex-eval-worker` service in `docker-compose.yml`: same build as `apex`, same env, same network/volumes, no ports; `command` runs the worker entrypoint (e.g. `python -m apex.worker`). |
 | **1.7** | **API (MVP)** ✅ | Endpoints: (a) `POST /v1/evaluation/runs` — create run (body: scope type + payload, judge_config_id or inline config), enqueue job, return run_id; (b) `GET /v1/evaluation/runs/{run_id}` — run status + summary (e.g. score count); (c) `GET /v1/evaluation/runs/{run_id}/scores` — list scores for run (paginated). Optional: `GET /v1/evaluation/runs` — list runs (filter by time, status). |
-| **1.8** | **Config & secrets** | Judge model and API key (e.g. OpenAI for GPT-4o-mini) in config/env; evaluation service and worker read the same. |
+| **1.8** | **Config & secrets** ✅ | Judge model and API key (e.g. OpenAI for GPT-4o-mini) in config/env; evaluation service and worker read the same. See [README.md](README.md#config--secrets-step-18).. |
 
 **MVP outcome**: User can trigger an evaluation run (single or batch) via API; run is processed by the worker; results are stored and retrievable by run_id. No portal UI required for MVP; API-only is acceptable.
 
@@ -128,7 +128,7 @@ This document outlines the implementation plan for the Apex evaluation module: L
 
 ## 6. Docs to Add or Update
 
-- **`apex/docs/evaluation/README.md`** (optional): Short overview of the evaluation module and link to this plan.
+- **`apex/docs/evaluation/README.md`** ✅: Overview of the evaluation module, link to this plan, and **Config & secrets** (judge env vars, Docker, where they are used).
 - **`apex/docs/development/PROJECT_STRUCTURE.md`**: Add `evaluation` under routes/schemas and mention `apex.worker` when the worker exists.
 - **`docker-compose`**: Document the `apex-eval-worker` service in deployment docs (e.g. `apex/docs/deployment/DOCKER_MIGRATIONS.md` or a dedicated deployment section).
 

@@ -22,7 +22,7 @@ from apex.api.v1.schemas.evaluation import (
 )
 from apex.core.config import settings
 from apex.core.database import get_db
-from apex.ml.evaluation.judge import JudgeConfig
+from apex.ml.evaluation.judge import DEFAULT_JUDGE_PROMPT_TEMPLATE
 from apex.queue import enqueue_evaluation_run
 from apex.repositories.evaluation_repository import (
     EvaluationJudgeConfigRepository,
@@ -59,10 +59,16 @@ async def _resolve_judge_config_snapshot(
 ) -> dict:
     """
     Resolve request to a judge_config_snapshot dict for storage on the run.
-    Exactly one of judge_config_id or inline_judge_config should be used; if both omitted, use app default.
+    Requires exactly one of judge_config_id or inline_judge_config (with model_ref_id).
+    No defaults; fails if neither provided or inline is missing model_ref_id.
     """
     if judge_config_id is not None and inline_judge_config is not None:
         raise ValueError("Provide either judge_config_id or inline_judge_config, not both")
+
+    if judge_config_id is None and inline_judge_config is None:
+        raise ValueError(
+            "Must provide judge_config_id or inline_judge_config; evaluation requires explicit judge configuration"
+        )
 
     if judge_config_id is not None:
         judge_repo = EvaluationJudgeConfigRepository(db)
@@ -78,32 +84,22 @@ async def _resolve_judge_config_snapshot(
         snapshot["rubric"] = config.rubric
         return snapshot
 
-    # Inline or default
-    default_cfg = JudgeConfig.from_settings()
-    if inline_judge_config is not None and inline_judge_config.model_ref_id is not None:
-        model_ref_repo = ModelRefRepository(db)
-        model_ref = await model_ref_repo.get_for_org(
-            inline_judge_config.model_ref_id, organization_id
+    # Inline (required model_ref_id)
+    if inline_judge_config.model_ref_id is None:
+        raise ValueError(
+            "inline_judge_config must include model_ref_id; evaluation requires explicit judge model"
         )
-        if not model_ref or not model_ref.connection:
-            raise ValueError("Inline model_ref_id not found")
-        snapshot = _build_judge_snapshot_from_model_ref(model_ref)
-    else:
-        snapshot = {
-            "model": default_cfg.model,
-            "provider": default_cfg.provider,
-            "prompt_template": default_cfg.prompt_template,
-            "rubric": default_cfg.rubric,
-            "api_key_env_var": default_cfg.api_key_env_var,
-            "base_url": default_cfg.base_url,
-        }
-    if inline_judge_config is not None:
-        if inline_judge_config.prompt_template is not None:
-            snapshot["prompt_template"] = inline_judge_config.prompt_template
-        if inline_judge_config.rubric is not None:
-            snapshot["rubric"] = inline_judge_config.rubric
-    if not snapshot.get("prompt_template"):
-        snapshot["prompt_template"] = default_cfg.prompt_template
+    model_ref_repo = ModelRefRepository(db)
+    model_ref = await model_ref_repo.get_for_org(
+        inline_judge_config.model_ref_id, organization_id
+    )
+    if not model_ref or not model_ref.connection:
+        raise ValueError("Inline model_ref_id not found")
+    snapshot = _build_judge_snapshot_from_model_ref(model_ref)
+    snapshot["prompt_template"] = (
+        inline_judge_config.prompt_template or DEFAULT_JUDGE_PROMPT_TEMPLATE
+    )
+    snapshot["rubric"] = inline_judge_config.rubric
     return snapshot
 
 
@@ -116,7 +112,7 @@ async def create_evaluation_run(
 ):
     """
     Create an evaluation run, enqueue it for the worker, and return run_id.
-    Body: scope_type, scope_payload, and either judge_config_id or inline_judge_config (or neither for app default).
+    Body: scope_type, scope_payload, and either judge_config_id or inline_judge_config (with model_ref_id required).
     """
     organization_id = UUID(user_data["org_id"])
     if body.scope_type not in ("single", "batch"):
