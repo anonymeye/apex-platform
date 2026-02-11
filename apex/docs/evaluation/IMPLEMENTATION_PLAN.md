@@ -42,7 +42,7 @@ This document outlines the implementation plan for the Apex evaluation module: L
 | Step | Description | Deliverables |
 |------|-------------|--------------|
 | **2.1** | **Runs list & detail in portal** ✅ | UI: list evaluation runs (filter by date, status), drill into a run to see scores (e.g. conversation snippet, turn, LLM score, dimensions). Reuse existing API from Phase 1. |
-| **2.2** | **Human judge flow** | API: endpoint to record a human score for a given (run_id, conversation_id, turn) — e.g. `POST /v1/evaluation/runs/{run_id}/scores/{score_id}/human` with body `{ score, optional_comment }`. Store in DB (e.g. `human_score`, `human_comment`, `human_reviewed_at` on scores table or a small `human_reviews` table). |
+| **2.2** | **Human judge flow** ✅ | API: endpoint to record a human score for a given (run_id, conversation_id, turn) — e.g. `POST /v1/evaluation/runs/{run_id}/scores/{score_id}/human` with body `{ score, optional_comment }`. Store in DB (e.g. `human_score`, `human_comment`, `human_reviewed_at` on scores table or a small `human_reviews` table). |
 | **2.3** | **Side panel for human review** | In portal: show a conversation (or a single turn) and the agent response; side panel to submit human score and comment. Calls the human-score API. Optionally show LLM score alongside for comparison. |
 
 **Scope note**: Phase 2 can be split so that 2.1 is MVP (basic visibility) and 2.2–2.3 are “early enhancement” if you want to ship MVP with API-only first.

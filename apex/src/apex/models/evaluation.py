@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -97,6 +98,9 @@ class EvaluationScore(BaseModel):
     raw_judge_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     human_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     human_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    human_reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     run: Mapped["EvaluationRun"] = relationship(
         "EvaluationRun",

@@ -87,6 +87,13 @@ class RunListItem(BaseModel):
         from_attributes = True
 
 
+class HumanScoreRequest(BaseModel):
+    """Request body for POST /evaluation/runs/{run_id}/scores/{score_id}/human."""
+
+    score: float = Field(..., description="Human-assigned score for this turn")
+    comment: Optional[str] = Field(None, description="Optional comment from the reviewer")
+
+
 class ScoreResponse(BaseModel):
     """One score for GET /evaluation/runs/{run_id}/scores."""
 
@@ -98,6 +105,7 @@ class ScoreResponse(BaseModel):
     raw_judge_output: Optional[str] = None
     human_score: Optional[float] = None
     human_comment: Optional[str] = None
+    human_reviewed_at: Optional[str] = None
     created_at: str
 
     class Config:

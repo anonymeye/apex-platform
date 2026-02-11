@@ -13,6 +13,7 @@ from apex.api.dependencies import get_current_user_from_token
 from apex.api.v1.schemas.evaluation import (
     CreateRunRequest,
     CreateRunResponse,
+    HumanScoreRequest,
     InlineJudgeConfig,
     ListRunsResponse,
     ListScoresResponse,
@@ -219,6 +220,7 @@ async def list_evaluation_scores(
                 raw_judge_output=s.raw_judge_output,
                 human_score=s.human_score,
                 human_comment=s.human_comment,
+                human_reviewed_at=s.human_reviewed_at.isoformat() if s.human_reviewed_at else None,
                 created_at=s.created_at.isoformat(),
             )
             for s in scores
@@ -226,6 +228,56 @@ async def list_evaluation_scores(
         total=total,
         skip=skip,
         limit=limit,
+    )
+
+
+@router.post(
+    "/runs/{run_id}/scores/{score_id}/human",
+    response_model=ScoreResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def submit_human_score(
+    run_id: UUID,
+    score_id: UUID,
+    body: HumanScoreRequest,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """
+    Record a human score and optional comment for a given evaluation score.
+    The score must belong to the specified run; the run must belong to your organization.
+    """
+    organization_id = UUID(user_data["org_id"])
+    run_repo = EvaluationRunRepository(db)
+    score_repo = EvaluationScoreRepository(db)
+    run = await run_repo.get(run_id)
+    if not run or run.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        )
+    score = await score_repo.set_human_review(
+        score_id=score_id,
+        run_id=run_id,
+        human_score=body.score,
+        human_comment=body.comment,
+    )
+    if not score:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation score not found for this run",
+        )
+    return ScoreResponse(
+        id=score.id,
+        run_id=score.run_id,
+        conversation_id=score.conversation_id,
+        turn_index=score.turn_index,
+        scores=score.scores,
+        raw_judge_output=score.raw_judge_output,
+        human_score=score.human_score,
+        human_comment=score.human_comment,
+        human_reviewed_at=score.human_reviewed_at.isoformat() if score.human_reviewed_at else None,
+        created_at=score.created_at.isoformat(),
     )
 
 

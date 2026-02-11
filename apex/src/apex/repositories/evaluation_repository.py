@@ -1,6 +1,6 @@
 """Evaluation run and score repositories."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -165,3 +165,33 @@ class EvaluationScoreRepository(BaseRepository[EvaluationScore]):
             )
         )
         return result.scalar() or 0
+
+    async def get_by_id_and_run_id(
+        self, score_id: UUID, run_id: UUID
+    ) -> Optional[EvaluationScore]:
+        """Get a score by ID and run_id (ensures score belongs to the run)."""
+        result = await self.session.execute(
+            select(EvaluationScore).where(
+                EvaluationScore.id == score_id,
+                EvaluationScore.run_id == run_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def set_human_review(
+        self,
+        score_id: UUID,
+        run_id: UUID,
+        human_score: float,
+        human_comment: Optional[str] = None,
+    ) -> Optional[EvaluationScore]:
+        """Set human score and comment on a score; returns updated score or None if not found."""
+        score = await self.get_by_id_and_run_id(score_id, run_id)
+        if not score:
+            return None
+        score.human_score = human_score
+        score.human_comment = human_comment
+        score.human_reviewed_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        await self.session.refresh(score)
+        return score
