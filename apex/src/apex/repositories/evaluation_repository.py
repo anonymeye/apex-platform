@@ -1,5 +1,6 @@
 """Evaluation run and score repositories."""
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -20,6 +21,20 @@ class EvaluationJudgeConfigRepository(BaseRepository[EvaluationJudgeConfig]):
 
     def __init__(self, session: AsyncSession):
         super().__init__(EvaluationJudgeConfig, session)
+
+    async def get_by_id_and_organization(
+        self,
+        id: UUID,
+        organization_id: UUID,
+    ) -> Optional[EvaluationJudgeConfig]:
+        """Get a judge config by ID and organization."""
+        result = await self.session.execute(
+            select(EvaluationJudgeConfig).where(
+                EvaluationJudgeConfig.id == id,
+                EvaluationJudgeConfig.organization_id == organization_id,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_by_organization(
         self,
@@ -52,20 +67,68 @@ class EvaluationRunRepository(BaseRepository[EvaluationRun]):
         )
         return result.scalar_one_or_none()
 
-    async def list_by_organization(
+    def _list_query(
         self,
         organization_id: UUID,
         status: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> list[EvaluationRun]:
-        """List runs for an organization, optionally filtered by status."""
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
+    ):
+        """Base query for list/count with filters."""
         q = select(EvaluationRun).where(
             EvaluationRun.organization_id == organization_id
         )
         if status is not None:
             q = q.where(EvaluationRun.status == status)
-        q = q.order_by(EvaluationRun.created_at.desc()).offset(skip).limit(limit)
+        if created_after is not None:
+            q = q.where(EvaluationRun.created_at >= created_after)
+        if created_before is not None:
+            q = q.where(EvaluationRun.created_at <= created_before)
+        return q
+
+    async def count_by_organization(
+        self,
+        organization_id: UUID,
+        status: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
+    ) -> int:
+        """Count runs for an organization with optional filters."""
+        from sqlalchemy import func
+
+        q = select(func.count()).select_from(EvaluationRun).where(
+            EvaluationRun.organization_id == organization_id
+        )
+        if status is not None:
+            q = q.where(EvaluationRun.status == status)
+        if created_after is not None:
+            q = q.where(EvaluationRun.created_at >= created_after)
+        if created_before is not None:
+            q = q.where(EvaluationRun.created_at <= created_before)
+        result = await self.session.execute(q)
+        return result.scalar() or 0
+
+    async def list_by_organization(
+        self,
+        organization_id: UUID,
+        status: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[EvaluationRun]:
+        """List runs for an organization, optionally filtered by status and time."""
+        q = (
+            self._list_query(
+                organization_id,
+                status=status,
+                created_after=created_after,
+                created_before=created_before,
+            )
+            .order_by(EvaluationRun.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
