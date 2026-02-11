@@ -5,9 +5,10 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Loader2, ClipboardList } from "lucide-react"
+import { ArrowLeft, Loader2, ClipboardList, MessageSquare } from "lucide-react"
 import { evaluationApi } from "@/lib/api/evaluation"
 import type { ScoreResponse } from "@/lib/types/evaluation"
+import { HumanReviewSidePanel } from "@/components/evaluation/HumanReviewSidePanel"
 import { useState } from "react"
 
 function formatDate(iso: string) {
@@ -44,6 +45,8 @@ export default function EvaluationRunDetailPage() {
   const runId = params.runId as string
   const [scoresSkip, setScoresSkip] = useState(0)
   const scoresLimit = 50
+  const [reviewPanelOpen, setReviewPanelOpen] = useState(false)
+  const [selectedScore, setSelectedScore] = useState<ScoreResponse | null>(null)
 
   const { data: run, isLoading: runLoading, error: runError } = useQuery({
     queryKey: ["evaluation-run", runId],
@@ -172,12 +175,26 @@ export default function EvaluationRunDetailPage() {
                 {scores.map((score: ScoreResponse) => (
                   <Card key={score.id} className="bg-muted/30">
                     <CardContent className="pt-4">
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-2">
-                        <span className="font-mono">
-                          conversation: {score.conversation_id.slice(0, 8)}…
-                        </span>
-                        <span>•</span>
-                        <span>turn {score.turn_index}</span>
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                          <span className="font-mono">
+                            conversation: {score.conversation_id.slice(0, 8)}…
+                          </span>
+                          <span>•</span>
+                          <span>turn {score.turn_index}</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedScore(score)
+                            setReviewPanelOpen(true)
+                          }}
+                          className="shrink-0"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                          {score.human_score != null ? "Edit review" : "Add review"}
+                        </Button>
                       </div>
                       <div className="flex flex-wrap gap-2 mb-2">
                         {Object.entries(score.scores).map(([dim, val]) => (
@@ -193,6 +210,11 @@ export default function EvaluationRunDetailPage() {
                         <p className="text-sm text-muted-foreground mb-1">
                           Human score: {score.human_score}
                           {score.human_comment && ` — ${score.human_comment}`}
+                          {score.human_reviewed_at != null && (
+                            <span className="ml-1 text-xs">
+                              (reviewed {formatDate(score.human_reviewed_at)})
+                            </span>
+                          )}
                         </p>
                       )}
                       {score.raw_judge_output && (
@@ -241,6 +263,13 @@ export default function EvaluationRunDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <HumanReviewSidePanel
+        open={reviewPanelOpen}
+        onOpenChange={setReviewPanelOpen}
+        runId={runId}
+        score={selectedScore}
+      />
     </div>
   )
 }
