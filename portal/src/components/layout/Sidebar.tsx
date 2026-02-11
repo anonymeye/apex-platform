@@ -13,6 +13,7 @@ import {
   GraduationCap,
   FlaskConical,
   BarChart3,
+  ClipboardList,
 } from "lucide-react"
 import { AgentSelector } from "@/components/agents/AgentSelector"
 import { cn } from "@/lib/utils/cn"
@@ -62,6 +63,11 @@ const navigation = [
     name: "Experiments",
     href: "/experiments",
     icon: FlaskConical,
+  },
+  {
+    name: "Evaluation",
+    href: "/evaluation",
+    icon: ClipboardList,
   },
   {
     name: "Monitoring",
