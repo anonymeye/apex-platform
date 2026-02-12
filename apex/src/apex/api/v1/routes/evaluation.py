@@ -20,9 +20,12 @@ from apex.api.v1.schemas.evaluation import (
     JudgeConfigUpdate,
     ListJudgeConfigsResponse,
     ListRunsResponse,
+    ListSavedConversationsResponse,
     ListScoresResponse,
     RunDetailResponse,
     RunListItem,
+    SaveConversationRequest,
+    SavedConversationResponse,
     ScoreResponse,
 )
 from apex.core.config import settings
@@ -33,6 +36,7 @@ from apex.repositories.evaluation_repository import (
     EvaluationJudgeConfigRepository,
     EvaluationRunRepository,
     EvaluationScoreRepository,
+    SavedConversationRepository,
 )
 from apex.repositories.model_ref_repository import ModelRefRepository
 from apex.services.evaluation_service import EvaluationService
@@ -200,6 +204,150 @@ async def delete_judge_config(
             detail="Judge config not found",
         )
     await judge_repo.delete(config_id)
+
+
+# --- Saved conversations (Plan B.1) ---
+
+
+@router.get(
+    "/saved-conversations",
+    response_model=ListSavedConversationsResponse,
+)
+async def list_saved_conversations(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """List saved conversations for the current organization (paginated)."""
+    organization_id = UUID(user_data["org_id"])
+    repo = SavedConversationRepository(db)
+    items = await repo.list_by_organization(
+        organization_id=organization_id, skip=skip, limit=limit
+    )
+    total = await repo.count_by_organization(organization_id)
+    return ListSavedConversationsResponse(
+        items=[
+            SavedConversationResponse(
+                id=s.id,
+                organization_id=s.organization_id,
+                conversation_id=s.conversation_id,
+                user_id=s.user_id,
+                label=s.label,
+                agent_id=s.agent_id,
+                created_at=s.created_at.isoformat(),
+                updated_at=s.updated_at.isoformat(),
+            )
+            for s in items
+        ],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/saved-conversations/{saved_id}",
+    response_model=SavedConversationResponse,
+)
+async def get_saved_conversation(
+    saved_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Get a saved conversation by ID (must belong to your organization)."""
+    organization_id = UUID(user_data["org_id"])
+    repo = SavedConversationRepository(db)
+    saved = await repo.get_by_id_and_organization(saved_id, organization_id)
+    if not saved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Saved conversation not found",
+        )
+    return SavedConversationResponse(
+        id=saved.id,
+        organization_id=saved.organization_id,
+        conversation_id=saved.conversation_id,
+        user_id=saved.user_id,
+        label=saved.label,
+        agent_id=saved.agent_id,
+        created_at=saved.created_at.isoformat(),
+        updated_at=saved.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/saved-conversations",
+    response_model=SavedConversationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def persist_conversation(
+    body: SaveConversationRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """
+    Save a conversation for evaluation. The conversation must exist in Redis for the
+    current user (e.g. from Test Agent). user_id and organization_id are taken from auth.
+    """
+    organization_id = UUID(user_data["org_id"])
+    user_id = UUID(user_data["sub"])
+    redis = getattr(request.app.state, "redis", None)
+    if not redis:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis unavailable; cannot verify conversation",
+        )
+    store = ConversationStateStore(
+        redis,
+        ttl_seconds=settings.conversation_state_ttl_seconds,
+    )
+    state = await store.get(user_id, body.conversation_id)
+    if not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Conversation not found or no longer available; save from Test Agent while the conversation is active",
+        )
+    repo = SavedConversationRepository(db)
+    saved = await repo.create(
+        organization_id=organization_id,
+        conversation_id=body.conversation_id,
+        user_id=user_id,
+        label=body.label,
+        agent_id=body.agent_id,
+    )
+    return SavedConversationResponse(
+        id=saved.id,
+        organization_id=saved.organization_id,
+        conversation_id=saved.conversation_id,
+        user_id=saved.user_id,
+        label=saved.label,
+        agent_id=saved.agent_id,
+        created_at=saved.created_at.isoformat(),
+        updated_at=saved.updated_at.isoformat(),
+    )
+
+
+@router.delete(
+    "/saved-conversations/{saved_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_saved_conversation(
+    saved_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Delete a saved conversation (must belong to your organization)."""
+    organization_id = UUID(user_data["org_id"])
+    repo = SavedConversationRepository(db)
+    saved = await repo.get_by_id_and_organization(saved_id, organization_id)
+    if not saved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Saved conversation not found",
+        )
+    await repo.delete(saved_id)
 
 
 def _build_judge_snapshot_from_model_ref(model_ref) -> dict:

@@ -13,6 +13,34 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from apex.models.base import BaseModel
 
 
+class SavedConversation(BaseModel):
+    """Saved conversation bookmark for evaluation (references Redis state by user_id + conversation_id)."""
+
+    __tablename__ = "saved_conversations"
+
+    organization_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    conversation_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    agent_id: Mapped[Optional[UUID]] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    __table_args__ = (Index("ix_saved_conversations_created_at", "created_at"),)
+
+
 class EvaluationJudgeConfig(BaseModel):
     """Reusable judge configuration (prompt template, rubric, model)."""
 

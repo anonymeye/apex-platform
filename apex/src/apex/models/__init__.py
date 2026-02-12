@@ -3,7 +3,12 @@
 from apex.models.agent import Agent
 from apex.models.base import Base, BaseModel
 from apex.models.connection import Connection
-from apex.models.evaluation import EvaluationJudgeConfig, EvaluationRun, EvaluationScore
+from apex.models.evaluation import (
+    EvaluationJudgeConfig,
+    EvaluationRun,
+    EvaluationScore,
+    SavedConversation,
+)
 from apex.models.knowledge import Document, KnowledgeBase
 from apex.models.model_ref import ModelRef
 from apex.models.tool import AgentTool, Tool
@@ -25,4 +30,5 @@ __all__ = [
     "EvaluationJudgeConfig",
     "EvaluationRun",
     "EvaluationScore",
+    "SavedConversation",
 ]

@@ -61,6 +61,53 @@ class ListJudgeConfigsResponse(BaseModel):
     limit: int
 
 
+# --- Saved conversations (bookmarks for evaluation) ---
+
+
+class SaveConversationRequest(BaseModel):
+    """Request body for POST /evaluation/saved-conversations (persist conversation for evaluation)."""
+
+    conversation_id: UUID = Field(
+        ...,
+        description="ID of the conversation to save (must exist in Redis for the current user)",
+    )
+    label: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Label for this saved conversation",
+    )
+    agent_id: Optional[UUID] = Field(
+        None,
+        description="Optional agent ID associated with this conversation",
+    )
+
+
+class SavedConversationResponse(BaseModel):
+    """Response for saved conversation get/list."""
+
+    id: UUID
+    organization_id: UUID
+    conversation_id: UUID
+    user_id: UUID
+    label: str
+    agent_id: Optional[UUID] = None
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ListSavedConversationsResponse(BaseModel):
+    """Paginated list of saved conversations."""
+
+    items: list[SavedConversationResponse]
+    total: int
+    skip: int
+    limit: int
+
+
 # --- Inline judge (for create run without stored config) ---
 
 

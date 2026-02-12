@@ -18,6 +18,7 @@ from apex.models.evaluation import (  # noqa: F401
     EvaluationJudgeConfig,
     EvaluationRun,
     EvaluationScore,
+    SavedConversation,
 )
 from apex.models.model_ref import ModelRef  # noqa: F401
 from apex.core.config import settings

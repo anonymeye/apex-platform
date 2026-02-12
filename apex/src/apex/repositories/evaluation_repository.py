@@ -12,8 +12,57 @@ from apex.models.evaluation import (
     EvaluationJudgeConfig,
     EvaluationRun,
     EvaluationScore,
+    SavedConversation,
 )
 from apex.repositories.base import BaseRepository
+
+
+class SavedConversationRepository(BaseRepository[SavedConversation]):
+    """Repository for saved conversations (evaluation bookmarks)."""
+
+    def __init__(self, session: AsyncSession):
+        super().__init__(SavedConversation, session)
+
+    async def get_by_id_and_organization(
+        self,
+        id: UUID,
+        organization_id: UUID,
+    ) -> Optional[SavedConversation]:
+        """Get a saved conversation by ID and organization."""
+        result = await self.session.execute(
+            select(SavedConversation).where(
+                SavedConversation.id == id,
+                SavedConversation.organization_id == organization_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_by_organization(
+        self,
+        organization_id: UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[SavedConversation]:
+        """List saved conversations for an organization (newest first)."""
+        result = await self.session.execute(
+            select(SavedConversation)
+            .where(SavedConversation.organization_id == organization_id)
+            .order_by(SavedConversation.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def count_by_organization(self, organization_id: UUID) -> int:
+        """Count saved conversations for an organization."""
+        from sqlalchemy import func
+
+        result = await self.session.execute(
+            select(func.count()).select_from(SavedConversation).where(
+                SavedConversation.organization_id == organization_id
+            )
+        )
+        return result.scalar() or 0
 
 
 class EvaluationJudgeConfigRepository(BaseRepository[EvaluationJudgeConfig]):
