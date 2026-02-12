@@ -5,10 +5,11 @@ import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { ClipboardList, Loader2, ChevronRight } from "lucide-react"
+import { ClipboardList, Loader2, ChevronRight, Plus } from "lucide-react"
 import { evaluationApi } from "@/lib/api/evaluation"
 import type { RunListItem } from "@/lib/types/evaluation"
 import { JudgeConfigSection } from "@/components/evaluation/JudgeConfigSection"
+import { CreateRunForm } from "@/components/evaluation/CreateRunForm"
 import { useState } from "react"
 
 const STATUS_OPTIONS = [
@@ -51,6 +52,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function EvaluationPage() {
   const [statusFilter, setStatusFilter] = useState("")
   const [skip, setSkip] = useState(0)
+  const [createRunOpen, setCreateRunOpen] = useState(false)
   const limit = 20
 
   const { data, isLoading, error } = useQuery({
@@ -72,11 +74,17 @@ export default function EvaluationPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Evaluation</h1>
-        <p className="text-muted-foreground">
-          View evaluation runs and scores
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Evaluation</h1>
+          <p className="text-muted-foreground">
+            View evaluation runs and scores
+          </p>
+        </div>
+        <Button onClick={() => setCreateRunOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Create run
+        </Button>
       </div>
 
       <JudgeConfigSection />
@@ -124,13 +132,22 @@ export default function EvaluationPage() {
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No evaluation runs yet</h3>
-              <p className="text-muted-foreground max-w-sm">
-                Create runs via the API (POST /api/v1/evaluation/runs) with scope and judge config.
+              <p className="text-muted-foreground max-w-sm mb-4">
+                Create a run from a saved conversation and a judge config.
               </p>
+              <Button onClick={() => setCreateRunOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create run
+              </Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      <CreateRunForm
+        open={createRunOpen}
+        onOpenChange={setCreateRunOpen}
+      />
 
       {!isLoading && !error && runs.length > 0 && (
         <>
