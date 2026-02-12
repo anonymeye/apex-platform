@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { ClipboardList, Loader2, ChevronRight } from "lucide-react"
 import { evaluationApi } from "@/lib/api/evaluation"
 import type { RunListItem } from "@/lib/types/evaluation"
+import { JudgeConfigSection } from "@/components/evaluation/JudgeConfigSection"
 import { useState } from "react"
 
 const STATUS_OPTIONS = [
@@ -77,6 +78,8 @@ export default function EvaluationPage() {
           View evaluation runs and scores
         </p>
       </div>
+
+      <JudgeConfigSection />
 
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-2">
