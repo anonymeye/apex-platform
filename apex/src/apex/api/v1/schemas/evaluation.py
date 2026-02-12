@@ -6,6 +6,64 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+# --- Judge config (stored configs for evaluation judge) ---
+
+
+class JudgeConfigCreate(BaseModel):
+    """Request body for POST /evaluation/judge-configs."""
+
+    name: str = Field(..., min_length=1, max_length=255, description="Display name for this judge config")
+    prompt_template: str = Field(
+        ...,
+        description="Judge prompt template (placeholders: {{ user_message }}, {{ agent_response }}, {{ rubric }}, {{ tool_calls }})",
+    )
+    rubric: Optional[dict[str, Any]] = Field(
+        None,
+        description="Rubric/dimensions to score (e.g. {\"accuracy\": \"1-5\", \"tone\": \"1-5\"})",
+    )
+    model_ref_id: UUID = Field(
+        ...,
+        description="Model reference for the judge LLM (must belong to your organization)",
+    )
+
+
+class JudgeConfigUpdate(BaseModel):
+    """Request body for PATCH /evaluation/judge-configs/{id}."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    prompt_template: Optional[str] = None
+    rubric: Optional[dict[str, Any]] = None
+    model_ref_id: Optional[UUID] = None
+
+
+class JudgeConfigResponse(BaseModel):
+    """Response for judge config get/list."""
+
+    id: UUID
+    name: str
+    prompt_template: str
+    rubric: Optional[dict[str, Any]] = None
+    model_ref_id: UUID
+    organization_id: UUID
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ListJudgeConfigsResponse(BaseModel):
+    """Paginated list of judge configs."""
+
+    items: list[JudgeConfigResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+# --- Inline judge (for create run without stored config) ---
+
+
 class InlineJudgeConfig(BaseModel):
     """Inline judge config when not using a stored judge_config_id."""
 

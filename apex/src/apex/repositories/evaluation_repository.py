@@ -51,6 +51,17 @@ class EvaluationJudgeConfigRepository(BaseRepository[EvaluationJudgeConfig]):
         )
         return list(result.scalars().all())
 
+    async def count_by_organization(self, organization_id: UUID) -> int:
+        """Count judge configs for an organization."""
+        from sqlalchemy import func
+
+        result = await self.session.execute(
+            select(func.count()).select_from(EvaluationJudgeConfig).where(
+                EvaluationJudgeConfig.organization_id == organization_id
+            )
+        )
+        return result.scalar() or 0
+
 
 class EvaluationRunRepository(BaseRepository[EvaluationRun]):
     """Repository for evaluation runs."""

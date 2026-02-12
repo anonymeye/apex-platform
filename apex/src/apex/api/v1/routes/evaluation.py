@@ -15,6 +15,10 @@ from apex.api.v1.schemas.evaluation import (
     CreateRunResponse,
     HumanScoreRequest,
     InlineJudgeConfig,
+    JudgeConfigCreate,
+    JudgeConfigResponse,
+    JudgeConfigUpdate,
+    ListJudgeConfigsResponse,
     ListRunsResponse,
     ListScoresResponse,
     RunDetailResponse,
@@ -37,6 +41,165 @@ from apex.storage.conversation_state_store import ConversationStateStore
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+
+
+# --- Judge configs (Plan A.1) ---
+
+
+@router.get("/judge-configs", response_model=ListJudgeConfigsResponse)
+async def list_judge_configs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """List judge configs for the current organization (paginated)."""
+    organization_id = UUID(user_data["org_id"])
+    judge_repo = EvaluationJudgeConfigRepository(db)
+    configs = await judge_repo.get_by_organization(
+        organization_id=organization_id, skip=skip, limit=limit
+    )
+    total = await judge_repo.count_by_organization(organization_id)
+    return ListJudgeConfigsResponse(
+        items=[
+            JudgeConfigResponse(
+                id=c.id,
+                name=c.name,
+                prompt_template=c.prompt_template,
+                rubric=c.rubric,
+                model_ref_id=c.model_ref_id,
+                organization_id=c.organization_id,
+                created_at=c.created_at.isoformat(),
+                updated_at=c.updated_at.isoformat(),
+            )
+            for c in configs
+        ],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/judge-configs/{config_id}", response_model=JudgeConfigResponse)
+async def get_judge_config(
+    config_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Get a judge config by ID (must belong to your organization)."""
+    organization_id = UUID(user_data["org_id"])
+    judge_repo = EvaluationJudgeConfigRepository(db)
+    config = await judge_repo.get_by_id_and_organization(config_id, organization_id)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge config not found",
+        )
+    return JudgeConfigResponse(
+        id=config.id,
+        name=config.name,
+        prompt_template=config.prompt_template,
+        rubric=config.rubric,
+        model_ref_id=config.model_ref_id,
+        organization_id=config.organization_id,
+        created_at=config.created_at.isoformat(),
+        updated_at=config.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/judge-configs",
+    response_model=JudgeConfigResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_judge_config(
+    body: JudgeConfigCreate,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Create a judge config (model_ref_id must belong to your organization)."""
+    organization_id = UUID(user_data["org_id"])
+    model_ref_repo = ModelRefRepository(db)
+    model_ref = await model_ref_repo.get_for_org(body.model_ref_id, organization_id)
+    if not model_ref:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Model ref not found or does not belong to your organization",
+        )
+    judge_repo = EvaluationJudgeConfigRepository(db)
+    config = await judge_repo.create(
+        name=body.name,
+        prompt_template=body.prompt_template,
+        rubric=body.rubric,
+        model_ref_id=body.model_ref_id,
+        organization_id=organization_id,
+    )
+    return JudgeConfigResponse(
+        id=config.id,
+        name=config.name,
+        prompt_template=config.prompt_template,
+        rubric=config.rubric,
+        model_ref_id=config.model_ref_id,
+        organization_id=config.organization_id,
+        created_at=config.created_at.isoformat(),
+        updated_at=config.updated_at.isoformat(),
+    )
+
+
+@router.patch("/judge-configs/{config_id}", response_model=JudgeConfigResponse)
+async def update_judge_config(
+    config_id: UUID,
+    body: JudgeConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Update a judge config (partial; only provided fields are updated)."""
+    organization_id = UUID(user_data["org_id"])
+    judge_repo = EvaluationJudgeConfigRepository(db)
+    config = await judge_repo.get_by_id_and_organization(config_id, organization_id)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge config not found",
+        )
+    if body.model_ref_id is not None:
+        model_ref_repo = ModelRefRepository(db)
+        model_ref = await model_ref_repo.get_for_org(body.model_ref_id, organization_id)
+        if not model_ref:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Model ref not found or does not belong to your organization",
+            )
+    update_data = body.model_dump(exclude_unset=True)
+    config = await judge_repo.update(config_id, **update_data)
+    return JudgeConfigResponse(
+        id=config.id,
+        name=config.name,
+        prompt_template=config.prompt_template,
+        rubric=config.rubric,
+        model_ref_id=config.model_ref_id,
+        organization_id=config.organization_id,
+        created_at=config.created_at.isoformat(),
+        updated_at=config.updated_at.isoformat(),
+    )
+
+
+@router.delete("/judge-configs/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_judge_config(
+    config_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user_data: dict = Depends(get_current_user_from_token),
+):
+    """Delete a judge config (must belong to your organization)."""
+    organization_id = UUID(user_data["org_id"])
+    judge_repo = EvaluationJudgeConfigRepository(db)
+    config = await judge_repo.get_by_id_and_organization(config_id, organization_id)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Judge config not found",
+        )
+    await judge_repo.delete(config_id)
 
 
 def _build_judge_snapshot_from_model_ref(model_ref) -> dict:
