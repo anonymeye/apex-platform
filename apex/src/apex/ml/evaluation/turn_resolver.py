@@ -55,8 +55,9 @@ def messages_to_turn_input(messages: list[dict[str, Any]], turn_index: int) -> T
             if isinstance(tool_calls, list) and tool_calls:
                 for tc in tool_calls:
                     name = tc.get("function", {}).get("name", "?") if isinstance(tc, dict) else "?"
-                    args = tc.get("function", {}).get("arguments", "") if isinstance(tc, dict) else ""
-                    tool_calls_summary_parts.append(f"- {name}: {args[:200]}{'...' if len(str(args)) > 200 else ''}")
+                    args_raw = tc.get("function", {}).get("arguments", "") if isinstance(tc, dict) else ""
+                    args_str = args_raw if isinstance(args_raw, str) else json.dumps(args_raw)
+                    tool_calls_summary_parts.append(f"- {name}: {args_str[:200]}{'...' if len(args_str) > 200 else ''}")
         elif role == "tool":
             if content:
                 agent_parts.append(f"[Tool result: {content[:300]}{'...' if len(content) > 300 else ''}]")
