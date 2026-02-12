@@ -26,6 +26,10 @@ interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphEleme
   children: React.ReactNode
 }
 
+interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode
+}
+
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open) return null
 
@@ -75,5 +79,16 @@ export function DialogDescription({ className, children, ...props }: DialogDescr
     <p className={cn("text-sm text-muted-foreground", className)} {...props}>
       {children}
     </p>
+  )
+}
+
+export function DialogFooter({ className, children, ...props }: DialogFooterProps) {
+  return (
+    <div
+      className={cn("flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-4", className)}
+      {...props}
+    >
+      {children}
+    </div>
   )
 }

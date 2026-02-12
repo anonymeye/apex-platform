@@ -4,13 +4,24 @@ import * as React from "react"
 import { useAgentStore } from "@/lib/store/agentStore"
 import { agentsApi } from "@/lib/api/agents"
 import { chatApi } from "@/lib/api/chat"
+import { evaluationApi } from "@/lib/api/evaluation"
 import type { Agent } from "@/lib/types/agent"
 import type { Message as ChatMessageBase, ToolCall } from "@/lib/types/chat"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { ConversationStateDebugPanel } from "@/components/chat/ConversationStateDebugPanel"
-import { Bot } from "lucide-react"
+import { Bot, Bookmark } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils/cn"
 
@@ -44,6 +55,11 @@ export default function TestAgentPage() {
   const [input, setInput] = React.useState("")
   const [isSending, setIsSending] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [saveModalOpen, setSaveModalOpen] = React.useState(false)
+  const [saveLabel, setSaveLabel] = React.useState("")
+  const [saveSubmitting, setSaveSubmitting] = React.useState(false)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = React.useState(false)
   const bottomRef = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
@@ -105,6 +121,41 @@ export default function TestAgentPage() {
         </div>
       </div>
     )
+  }
+
+  const canSaveConversation =
+    Boolean(conversationId) && messages.length > 0
+
+  const handleSaveForEvaluation = () => {
+    setSaveError(null)
+    setSaveLabel("")
+    setSaveModalOpen(true)
+  }
+
+  const handlePersistConversation = async () => {
+    const label = saveLabel.trim()
+    if (!label || !conversationId || !agent) return
+    setSaveSubmitting(true)
+    setSaveError(null)
+    try {
+      await evaluationApi.persistConversation({
+        conversation_id: conversationId,
+        label,
+        agent_id: agent.id ?? undefined,
+      })
+      setSaveModalOpen(false)
+      setSaveLabel("")
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (e: unknown) {
+      const detail =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (e as Error)?.message ||
+        "Failed to save conversation"
+      setSaveError(String(detail))
+    } finally {
+      setSaveSubmitting(false)
+    }
   }
 
   const handleClear = async () => {
@@ -197,10 +248,29 @@ export default function TestAgentPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {saveSuccess && (
+            <span className="text-sm text-green-600 dark:text-green-400">
+              Saved for evaluation
+            </span>
+          )}
           <ConversationStateDebugPanel
             agentId={agent.id}
             conversationId={conversationId}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSaveForEvaluation}
+            disabled={!canSaveConversation}
+            title={
+              canSaveConversation
+                ? "Save this conversation for use in evaluation runs"
+                : "Start a conversation to save it for evaluation"
+            }
+          >
+            <Bookmark className="mr-1.5 h-4 w-4" />
+            Save for evaluation
+          </Button>
           <Button
             variant="outline"
             onClick={() => void handleClear()}
@@ -312,6 +382,54 @@ export default function TestAgentPage() {
           </div>
         </CardFooter>
       </Card>
+
+      <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save for evaluation</DialogTitle>
+            <DialogDescription>
+              Give this conversation a label so you can select it when creating an
+              evaluation run.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="save-label">Label (required)</Label>
+              <Input
+                id="save-label"
+                value={saveLabel}
+                onChange={(e) => setSaveLabel(e.target.value)}
+                placeholder="e.g. Support example 1"
+                disabled={saveSubmitting}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    if (saveLabel.trim()) void handlePersistConversation()
+                  }
+                }}
+              />
+            </div>
+            {saveError && (
+              <p className="text-sm text-destructive">{saveError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSaveModalOpen(false)}
+              disabled={saveSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handlePersistConversation()}
+              disabled={saveSubmitting || !saveLabel.trim()}
+            >
+              {saveSubmitting ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
