@@ -42,6 +42,7 @@ export function CreateRunForm({
   const router = useRouter()
   const queryClient = useQueryClient()
   const [savedConversationId, setSavedConversationId] = React.useState("")
+  const [evaluateMode, setEvaluateMode] = React.useState<"single" | "conversation">("single")
   const [turnIndex, setTurnIndex] = React.useState(0)
   const [judgeConfigId, setJudgeConfigId] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
@@ -81,13 +82,22 @@ export function CreateRunForm({
     setSubmitting(true)
     setError(null)
     try {
+      const scopePayload =
+        evaluateMode === "conversation"
+          ? {
+              saved_conversation_id: selectedConversation.id,
+              conversation_id: selectedConversation.conversation_id,
+              user_id: selectedConversation.user_id,
+            }
+          : {
+              saved_conversation_id: selectedConversation.id,
+              conversation_id: selectedConversation.conversation_id,
+              user_id: selectedConversation.user_id,
+              turn_index: turnIndex,
+            }
       const res = await evaluationApi.createRun({
-        scope_type: "single",
-        scope_payload: {
-          conversation_id: selectedConversation.conversation_id,
-          user_id: selectedConversation.user_id,
-          turn_index: turnIndex,
-        },
+        scope_type: evaluateMode === "conversation" ? "conversation" : "single",
+        scope_payload: scopePayload,
         judge_config_id: judgeConfigId,
       })
       onOpenChange(false)
@@ -143,19 +153,47 @@ export function CreateRunForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="create-run-turn">Turn index</Label>
-            <Input
-              id="create-run-turn"
-              type="number"
-              min={0}
-              value={turnIndex}
-              onChange={(e) => setTurnIndex(parseInt(e.target.value, 10) || 0)}
-              disabled={submitting}
-            />
-            <p className="text-xs text-muted-foreground">
-              Which turn to evaluate (0 = first user/assistant pair).
-            </p>
+            <Label>Evaluate</Label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="evaluate-mode"
+                  checked={evaluateMode === "single"}
+                  onChange={() => setEvaluateMode("single")}
+                  className="rounded border-input"
+                />
+                <span className="text-sm">Single turn</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="evaluate-mode"
+                  checked={evaluateMode === "conversation"}
+                  onChange={() => setEvaluateMode("conversation")}
+                  className="rounded border-input"
+                />
+                <span className="text-sm">Whole conversation</span>
+              </label>
+            </div>
           </div>
+
+          {evaluateMode === "single" && (
+            <div className="grid gap-2">
+              <Label htmlFor="create-run-turn">Turn index</Label>
+              <Input
+                id="create-run-turn"
+                type="number"
+                min={0}
+                value={turnIndex}
+                onChange={(e) => setTurnIndex(parseInt(e.target.value, 10) || 0)}
+                disabled={submitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                Which turn to evaluate (0 = first user/assistant pair).
+              </p>
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="create-run-judge">Judge config</Label>

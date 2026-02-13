@@ -316,6 +316,7 @@ async def persist_conversation(
         user_id=user_id,
         label=body.label,
         agent_id=body.agent_id,
+        messages=state.messages,
     )
     return SavedConversationResponse(
         id=saved.id,
@@ -427,11 +428,32 @@ async def create_evaluation_run(
     Body: scope_type, scope_payload, and either judge_config_id or inline_judge_config (with model_ref_id required).
     """
     organization_id = UUID(user_data["org_id"])
-    if body.scope_type not in ("single", "batch"):
+    if body.scope_type not in ("single", "batch", "conversation"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="scope_type must be 'single' or 'batch'",
+            detail="scope_type must be 'single', 'batch', or 'conversation'",
         )
+    saved_conv_id = body.scope_payload.get("saved_conversation_id")
+    if saved_conv_id is not None:
+        try:
+            sid = UUID(saved_conv_id) if isinstance(saved_conv_id, str) else saved_conv_id
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid saved_conversation_id",
+            )
+        saved_repo = SavedConversationRepository(db)
+        saved = await saved_repo.get_by_id_and_organization(sid, organization_id)
+        if not saved:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Saved conversation not found or not in this organization",
+            )
+        if not saved.messages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Saved conversation has no message snapshot; save it again from Test Agent",
+            )
     try:
         judge_snapshot = await _resolve_judge_config_snapshot(
             db, organization_id, body.judge_config_id, body.inline_judge_config

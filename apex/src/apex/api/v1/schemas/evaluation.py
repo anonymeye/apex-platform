@@ -133,11 +133,11 @@ class CreateRunRequest(BaseModel):
 
     scope_type: str = Field(
         ...,
-        description="Scope type: 'single' or 'batch'",
+        description="Scope type: 'single', 'batch', or 'conversation' (whole conversation)",
     )
     scope_payload: dict[str, Any] = Field(
         ...,
-        description="Scope payload. Single: { conversation_id, user_id?, turn_index?, inline? }. Batch: { items: [{ conversation_id, user_id?, turn_index?, inline? }, ...] }",
+        description="Scope payload. Single: { conversation_id, user_id?, turn_index?, inline? }. Batch: { items: [...] }. Conversation: { conversation_id, user_id }.",
     )
     judge_config_id: Optional[UUID] = Field(
         None,

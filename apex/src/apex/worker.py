@@ -25,6 +25,7 @@ from apex.queue import dequeue_evaluation_job
 from apex.repositories.evaluation_repository import (
     EvaluationRunRepository,
     EvaluationScoreRepository,
+    SavedConversationRepository,
 )
 from apex.services.evaluation_service import EvaluationService
 from apex.storage.conversation_state_store import ConversationStateStore
@@ -53,6 +54,7 @@ async def run_worker_loop(redis: Redis) -> None:
             try:
                 run_repo = EvaluationRunRepository(session)
                 score_repo = EvaluationScoreRepository(session)
+                saved_conv_repo = SavedConversationRepository(session)
                 store = ConversationStateStore(
                     redis,
                     ttl_seconds=settings.conversation_state_ttl_seconds,
@@ -61,6 +63,7 @@ async def run_worker_loop(redis: Redis) -> None:
                     run_repo=run_repo,
                     score_repo=score_repo,
                     conversation_state_store=store,
+                    saved_conversation_repo=saved_conv_repo,
                 )
                 await svc.execute_run(run_id)
                 await session.commit()

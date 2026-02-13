@@ -8,11 +8,12 @@ from typing import Any
 from uuid import UUID
 
 from apex.ml.evaluation.judge import JudgeConfig, JudgeResult, TurnInput, run_judge
-from apex.ml.evaluation.turn_resolver import messages_to_turn_input
+from apex.ml.evaluation.turn_resolver import messages_to_full_transcript, messages_to_turn_input
 from apex.models.evaluation import EvaluationRun, EvaluationScore
 from apex.repositories.evaluation_repository import (
     EvaluationRunRepository,
     EvaluationScoreRepository,
+    SavedConversationRepository,
 )
 from apex.storage.conversation_state_store import ConversationStateStore
 
@@ -30,8 +31,10 @@ class ScopeItem:
 
 # Scope payload formats (see IMPLEMENTATION_PLAN Phase 1.4):
 # - single + ref: {"conversation_id": "...", "user_id": "...", "turn_index": 0}
+# - single + saved: {"saved_conversation_id": "..."}  # messages from DB snapshot
 # - single + inline: {"inline": {"user_message": "...", "agent_response": "...", "tool_calls_summary": null}, "conversation_id": "..."}
 # - batch: {"items": [{"conversation_id": "...", "user_id": "...", "turn_index": 0} | {"conversation_id": "...", "inline": {...}}, ...]}
+# - conversation: {"conversation_id": "...", "user_id": "..."} or {"saved_conversation_id": "..."}  # latter uses DB snapshot
 
 
 class EvaluationService:
@@ -42,10 +45,12 @@ class EvaluationService:
         run_repo: EvaluationRunRepository,
         score_repo: EvaluationScoreRepository,
         conversation_state_store: ConversationStateStore | None = None,
+        saved_conversation_repo: SavedConversationRepository | None = None,
     ):
         self.run_repo = run_repo
         self.score_repo = score_repo
         self.conversation_state_store = conversation_state_store
+        self.saved_conversation_repo = saved_conversation_repo
 
     async def create_run(
         self,
@@ -145,17 +150,85 @@ class EvaluationService:
             return None
         return ScopeItem(conversation_id=cid, turn_index=turn_index, turn=turn_input)
 
+    async def _resolve_from_saved_conversation(
+        self,
+        saved_conversation_id: UUID,
+        organization_id: UUID,
+        scope_type: str,
+        scope_payload: dict[str, Any],
+    ) -> list[ScopeItem] | None:
+        """Load messages from saved conversation snapshot (DB). Returns None if not found or no messages."""
+        if not self.saved_conversation_repo:
+            return None
+        saved = await self.saved_conversation_repo.get_by_id_and_organization(
+            saved_conversation_id, organization_id
+        )
+        if not saved or not saved.messages:
+            return None
+        cid = saved.conversation_id
+        if scope_type == "conversation":
+            transcript = messages_to_full_transcript(saved.messages)
+            turn = TurnInput(
+                user_message="",
+                agent_response="",
+                full_transcript=transcript,
+            )
+            return [ScopeItem(conversation_id=cid, turn_index=0, turn=turn)]
+        if scope_type == "single":
+            turn_index = int(scope_payload.get("turn_index", 0))
+            turn_input = messages_to_turn_input(saved.messages, turn_index)
+            if turn_input is None:
+                return None
+            return [ScopeItem(conversation_id=cid, turn_index=turn_index, turn=turn_input)]
+        return None
+
     async def resolve_scope_items(
         self,
         scope_type: str,
         scope_payload: dict[str, Any],
+        organization_id: UUID | None = None,
     ) -> list[ScopeItem]:
-        """Resolve full scope to scope items. For single+ref we need to load from Redis here."""
+        """Resolve full scope to scope items. Uses DB snapshot when saved_conversation_id is present, else Redis."""
+        saved_id_raw = scope_payload.get("saved_conversation_id")
+        if (
+            saved_id_raw is not None
+            and organization_id is not None
+        ):
+            try:
+                saved_id = UUID(saved_id_raw) if isinstance(saved_id_raw, str) else saved_id_raw
+            except (TypeError, ValueError):
+                pass
+            else:
+                items = await self._resolve_from_saved_conversation(
+                    saved_id, organization_id, scope_type, scope_payload
+                )
+                if items is not None:
+                    return items
+
+        if scope_type == "conversation":
+            conv_id = scope_payload.get("conversation_id")
+            user_id_raw = scope_payload.get("user_id")
+            if not conv_id or not user_id_raw or not self.conversation_state_store:
+                return []
+            try:
+                cid = UUID(conv_id) if isinstance(conv_id, str) else conv_id
+                uid = UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
+            except (TypeError, ValueError):
+                return []
+            state = await self.conversation_state_store.get(uid, cid)
+            if not state or not state.messages:
+                return []
+            transcript = messages_to_full_transcript(state.messages)
+            turn = TurnInput(
+                user_message="",
+                agent_response="",
+                full_transcript=transcript,
+            )
+            return [ScopeItem(conversation_id=cid, turn_index=0, turn=turn)]
         if scope_type == "single":
             inline = scope_payload.get("inline")
             if isinstance(inline, dict):
                 return self.get_scope_items(scope_type, scope_payload)
-            # Single ref
             conv_id = scope_payload.get("conversation_id")
             user_id_raw = scope_payload.get("user_id")
             turn_index = int(scope_payload.get("turn_index", 0))
@@ -190,7 +263,9 @@ class EvaluationService:
 
         await self.run_repo.update(run_id, status="running")
         config = JudgeConfig.from_snapshot(run.judge_config_snapshot)
-        scope_items = await self.resolve_scope_items(run.scope_type, run.scope_payload)
+        scope_items = await self.resolve_scope_items(
+            run.scope_type, run.scope_payload, organization_id=run.organization_id
+        )
         if not scope_items:
             await self.run_repo.update(
                 run_id, status="completed", error_message="No items to evaluate"

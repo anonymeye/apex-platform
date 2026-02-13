@@ -1,4 +1,4 @@
-"""Resolve a single turn (user message + agent response) from conversation messages."""
+"""Resolve a single turn (user message + agent response) or full transcript from conversation messages."""
 
 from __future__ import annotations
 
@@ -6,6 +6,52 @@ import json
 from typing import Any
 
 from apex.ml.evaluation.judge import TurnInput
+
+
+def _content_to_str(content: Any) -> str:
+    """Normalize message content to a string for display."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            (b.get("text", "") if isinstance(b, dict) else str(b) for b in content
+        ))
+    return str(content) if content else ""
+
+
+def messages_to_full_transcript(messages: list[dict[str, Any]]) -> str:
+    """Format all messages as a single transcript for whole-conversation evaluation.
+
+    Args:
+        messages: List of message dicts (e.g. from ConversationState.messages).
+
+    Returns:
+        A single string with "User:", "Assistant:", "Tool:" lines.
+    """
+    if not messages:
+        return "(empty conversation)"
+    parts: list[str] = []
+    for m in messages:
+        role = (m.get("role") or "unknown").lower()
+        content = m.get("content", "")
+        text = _content_to_str(content)
+        if role == "user":
+            parts.append(f"User:\n{text}")
+        elif role == "assistant":
+            tool_calls = m.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                tc_summary = "; ".join(
+                    tc.get("function", {}).get("name", "?") if isinstance(tc, dict) else "?"
+                    for tc in tool_calls
+                )
+                parts.append(f"Assistant: [tool calls: {tc_summary}]\n{text}")
+            else:
+                parts.append(f"Assistant:\n{text}")
+        elif role == "tool":
+            parts.append(f"Tool result:\n{text[:500]}{'...' if len(text) > 500 else ''}")
+        else:
+            parts.append(f"{role.capitalize()}:\n{text}")
+    return "\n\n---\n\n".join(parts)
 
 
 def messages_to_turn_input(messages: list[dict[str, Any]], turn_index: int) -> TurnInput | None:

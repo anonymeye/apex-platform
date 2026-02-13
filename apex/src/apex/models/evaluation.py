@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID as PostgresUUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apex.models.base import BaseModel
 
 
 class SavedConversation(BaseModel):
-    """Saved conversation bookmark for evaluation (references Redis state by user_id + conversation_id)."""
+    """Saved conversation for evaluation; stores a snapshot of messages at save time."""
 
     __tablename__ = "saved_conversations"
 
@@ -36,6 +36,11 @@ class SavedConversation(BaseModel):
         ForeignKey("agents.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    messages: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSONB(astext_type=Text()),
+        nullable=True,
+        comment="Snapshot of conversation messages at save time; used for evaluation.",
     )
 
     __table_args__ = (Index("ix_saved_conversations_created_at", "created_at"),)

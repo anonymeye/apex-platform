@@ -35,14 +35,28 @@ Respond with a single JSON object only, no other text. Example:
 {"scores": {"accuracy": 4, "helpfulness": 5, "tone": 4}, "comment": "Brief optional comment"}
 """
 
+# For whole-conversation evaluation; placeholder: {{ full_transcript }}, {{ rubric }}
+DEFAULT_CONVERSATION_JUDGE_PROMPT_TEMPLATE = """You are an expert evaluator. Score the following conversation between a user and an AI agent on the given dimensions. Consider the full flow: coherence, whether the agent addressed the user's needs over time, and overall quality.
+
+Full conversation:
+{{ full_transcript }}
+
+Rubric / dimensions to score (1-5, 1=poor, 5=excellent):
+{{ rubric }}
+
+Respond with a single JSON object only, no other text. Example:
+{"scores": {"overall_quality": 4, "helpfulness": 5, "coherence": 4}, "comment": "Brief optional comment"}
+"""
+
 
 @dataclass
 class TurnInput:
-    """One turn to evaluate: user message + agent response."""
+    """One turn to evaluate: user message + agent response. Or full conversation when full_transcript is set."""
 
     user_message: str
     agent_response: str
     tool_calls_summary: str | None = None
+    full_transcript: str | None = None
 
 
 @dataclass
@@ -146,6 +160,18 @@ def _create_judge_model(config: JudgeConfig) -> OpenAIModel | AnthropicModel | G
 def _build_prompt(template: str, turn: TurnInput, rubric: dict[str, Any] | None) -> str:
     """Fill the judge prompt template with turn data and rubric."""
     rubric_str = json.dumps(rubric, indent=2) if rubric else "accuracy, helpfulness, tone (1-5 each)"
+    if turn.full_transcript is not None:
+        # Whole-conversation evaluation: use {{ full_transcript }} and {{ rubric }}
+        prompt = template.replace("{{ full_transcript }}", turn.full_transcript).replace(
+            "{{ rubric }}", rubric_str
+        )
+        # Replace turn-level placeholders so they don't appear literally
+        prompt = (
+            prompt.replace("{{ user_message }}", "(evaluating full conversation)")
+            .replace("{{ agent_response }}", "(evaluating full conversation)")
+            .replace("{{ tool_calls }}", "(evaluating full conversation)")
+        )
+        return prompt
     prompt = (
         template.replace("{{ user_message }}", turn.user_message)
         .replace("{{ agent_response }}", turn.agent_response)
@@ -184,10 +210,10 @@ def _parse_judge_response(content: str) -> JudgeResult:
 
 
 async def run_judge(turn: TurnInput, config: JudgeConfig) -> JudgeResult:
-    """Run the LLM judge on one turn. No DB; caller persists.
+    """Run the LLM judge on one turn or full conversation. No DB; caller persists.
 
     Args:
-        turn: User message + agent response (and optional tool calls summary).
+        turn: User message + agent response (and optional tool calls summary), or full_transcript for whole-conversation.
         config: Judge model, provider, prompt template, rubric.
 
     Returns:
@@ -197,7 +223,10 @@ async def run_judge(turn: TurnInput, config: JudgeConfig) -> JudgeResult:
         ValueError: If judge provider/config or API key is invalid.
     """
     model = _create_judge_model(config)
-    prompt = _build_prompt(config.prompt_template, turn, config.rubric)
+    template = config.prompt_template
+    if turn.full_transcript is not None and "{{ full_transcript }}" not in template:
+        template = DEFAULT_CONVERSATION_JUDGE_PROMPT_TEMPLATE
+    prompt = _build_prompt(template, turn, config.rubric)
     messages = [Message(role="user", content=prompt)]
     opts = ChatOptions(temperature=0.0, max_tokens=1024)
     async with model:
