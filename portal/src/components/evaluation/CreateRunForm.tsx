@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
@@ -40,6 +40,7 @@ export function CreateRunForm({
   onSuccess,
 }: CreateRunFormProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [savedConversationId, setSavedConversationId] = React.useState("")
   const [turnIndex, setTurnIndex] = React.useState(0)
   const [judgeConfigId, setJudgeConfigId] = React.useState("")
@@ -91,6 +92,7 @@ export function CreateRunForm({
       })
       onOpenChange(false)
       const runId = res.data.run_id
+      queryClient.invalidateQueries({ queryKey: ["evaluation-runs"] })
       if (onSuccess) {
         onSuccess(runId)
       } else {
