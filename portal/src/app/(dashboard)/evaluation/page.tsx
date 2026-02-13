@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { ClipboardList, Loader2, ChevronRight, Plus } from "lucide-react"
+import { ClipboardList, Loader2, ChevronRight, Plus, RefreshCw } from "lucide-react"
 import { evaluationApi } from "@/lib/api/evaluation"
 import type { RunListItem } from "@/lib/types/evaluation"
 import { JudgeConfigSection } from "@/components/evaluation/JudgeConfigSection"
@@ -55,7 +55,7 @@ export default function EvaluationPage() {
   const [createRunOpen, setCreateRunOpen] = useState(false)
   const limit = 20
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["evaluation-runs", statusFilter, skip, limit],
     queryFn: async () => {
       const res = await evaluationApi.listRuns({
@@ -65,6 +65,8 @@ export default function EvaluationPage() {
       })
       return res.data
     },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   const runs = data?.items ?? []
@@ -81,10 +83,22 @@ export default function EvaluationPage() {
             View evaluation runs and scores
           </p>
         </div>
-        <Button onClick={() => setCreateRunOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create run
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <Button onClick={() => setCreateRunOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create run
+          </Button>
+        </div>
       </div>
 
       <JudgeConfigSection />

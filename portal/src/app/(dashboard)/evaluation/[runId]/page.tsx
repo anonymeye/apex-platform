@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Loader2, ClipboardList, MessageSquare } from "lucide-react"
+import { ArrowLeft, Loader2, ClipboardList, MessageSquare, RefreshCw } from "lucide-react"
 import { evaluationApi } from "@/lib/api/evaluation"
 import type { ScoreResponse } from "@/lib/types/evaluation"
 import { HumanReviewSidePanel } from "@/components/evaluation/HumanReviewSidePanel"
@@ -48,16 +48,29 @@ export default function EvaluationRunDetailPage() {
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false)
   const [selectedScore, setSelectedScore] = useState<ScoreResponse | null>(null)
 
-  const { data: run, isLoading: runLoading, error: runError } = useQuery({
+  const {
+    data: run,
+    isLoading: runLoading,
+    error: runError,
+    refetch: refetchRun,
+    isFetching: runFetching,
+  } = useQuery({
     queryKey: ["evaluation-run", runId],
     queryFn: async () => {
       const res = await evaluationApi.getRun(runId)
       return res.data
     },
     enabled: !!runId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
-  const { data: scoresData, isLoading: scoresLoading } = useQuery({
+  const {
+    data: scoresData,
+    isLoading: scoresLoading,
+    refetch: refetchScores,
+    isFetching: scoresFetching,
+  } = useQuery({
     queryKey: ["evaluation-scores", runId, scoresSkip, scoresLimit],
     queryFn: async () => {
       const res = await evaluationApi.listScores(runId, {
@@ -67,12 +80,20 @@ export default function EvaluationRunDetailPage() {
       return res.data
     },
     enabled: !!runId && !!run,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   const scores = scoresData?.items ?? []
   const scoresTotal = scoresData?.total ?? 0
   const hasMoreScores = scoresSkip + scores.length < scoresTotal
   const hasPrevScores = scoresSkip > 0
+
+  const handleRefresh = () => {
+    void refetchRun()
+    void refetchScores()
+  }
+  const isRefreshing = runFetching || scoresFetching
 
   if (runLoading) {
     return (
@@ -111,18 +132,30 @@ export default function EvaluationRunDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/evaluation">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold">Evaluation Run</h1>
-          <p className="text-muted-foreground font-mono text-sm mt-1">
-            {run.id}
-          </p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4">
+          <Link href="/evaluation">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Evaluation Run</h1>
+            <p className="text-muted-foreground font-mono text-sm mt-1">
+              {run.id}
+            </p>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </Button>
       </div>
 
       <Card>
